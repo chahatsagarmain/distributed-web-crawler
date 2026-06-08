@@ -113,7 +113,7 @@ func TestRobotChecker_Cache(t *testing.T) {
 	defer server.Close()
 
 	rc := NewRobotChecker()
-	
+
 	// First request: should hit server
 	allowed, err := rc.IsAllowed(server.URL + "/secret")
 	if err != nil {

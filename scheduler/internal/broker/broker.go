@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"log"
 
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/cache"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -54,7 +57,7 @@ func SetupBroker(ch *amqp.Channel) error {
 		// Bind queue to consistent hashing exchange.
 		err = ch.QueueBind(
 			q.Name,                    // queue name
-			"1",                      // routing key (weight)
+			"1",                       // routing key (weight)
 			ConsistentHashingExchange, // exchange name
 			false,                     // no-wait
 			nil,                       // arguments
@@ -109,27 +112,46 @@ func SetupBroker(ch *amqp.Channel) error {
 	return nil
 }
 
-
-func ConsumeMessage(ch *amqp.Channel, dbchan chan []byte , depth int) {
+func ConsumeMessage(ch *amqp.Channel, rdb *redis.Client, dbchan chan []byte, maxDepth int) {
 	msg, ok, err := ch.Get(ResultQueue, true)
 	if !ok || err != nil {
-		log.Printf("ERROR: reading message %v", err)
 		return
 	}
 	dbchan <- msg.Body
+
 	var data common.UrlData
-	if err := json.Unmarshal(msg.Body , data) ; err != nil{
-		log.Printf("ERROR: Marshalling error for %v" , msg.Body)
+	if err := json.Unmarshal(msg.Body, &data); err != nil {
+		log.Printf("ERROR unmarshalling result message: %v", err)
+		db.DecrementPending(rdb)
+		return
 	}
-	if(data.Depth <= depth){
-		InsertMessage(ch , data.Url , depth + 1)
+
+	if data.Depth < maxDepth {
+		for _, nextURL := range data.NextUrls {
+			res, err := cache.CheckUrlDuplicate(rdb, nextURL)
+			if err == nil && !res {
+				_, err = db.IncrementPending(rdb, 1)
+				if err == nil {
+					err = InsertMessage(ch, nextURL, data.Depth, maxDepth)
+					if err != nil {
+						log.Printf("ERROR enqueuing link %s: %v", nextURL, err)
+						db.DecrementPending(rdb)
+					}
+				} else {
+					log.Printf("ERROR incrementing pending count: %v", err)
+				}
+			}
+		}
 	}
+
+	db.DecrementPending(rdb)
 }
 
-func InsertMessage(ch *amqp.Channel, urlStr string, depth int) error {
+func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) error {
 	msg := common.CrawlMessage{
-		URL:   urlStr,
-		Depth: depth,
+		URL:          urlStr,
+		CurrentDepth: currentDepth,
+		MaxDepth:     maxDepth,
 	}
 
 	body, err := json.Marshal(msg)
@@ -152,6 +174,6 @@ func InsertMessage(ch *amqp.Channel, urlStr string, depth int) error {
 		return fmt.Errorf("failed to publish message to consistent hashing exchange: %w", err)
 	}
 
-	log.Printf("Published message to consistent hashing exchange: URL=%s, Depth=%d", urlStr, depth)
+	log.Printf("Published message to consistent hashing exchange: URL=%s, CurrentDepth=%d, MaxDepth=%d", urlStr, currentDepth, maxDepth)
 	return nil
 }

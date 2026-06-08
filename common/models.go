@@ -1,16 +1,17 @@
 package common
 
 type CrawlMessage struct {
-	URL   string `json:"url"`
-	Depth int    `json:"depth"`
+	URL          string `json:"url"`
+	CurrentDepth int    `json:"current_depth"`
+	MaxDepth     int    `json:"max_depth"`
 }
 
 type CrawlDocument struct {
-	Url      string             `bson:"url"`
-	RawHtml  string             `bson:"raw_html"`
-	NextUrls []string           `bson:"next_urls,omitempty"` 
-	HasRobots bool              `bson:"has_robots"`
-	Depth    int                `bson:"depth"`
+	Url       string   `bson:"url"`
+	RawHtml   string   `bson:"raw_html"`
+	NextUrls  []string `bson:"next_urls,omitempty"`
+	HasRobots bool     `bson:"has_robots"`
+	Depth     int      `bson:"depth"`
 }
 
 type UrlData struct {

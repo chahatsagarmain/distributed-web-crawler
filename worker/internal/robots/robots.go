@@ -18,7 +18,6 @@ type RobotChecker struct {
 	cacheMu   sync.RWMutex
 }
 
-
 func NewRobotChecker() *RobotChecker {
 	return &RobotChecker{
 		Client: &http.Client{
@@ -28,7 +27,6 @@ func NewRobotChecker() *RobotChecker {
 		cache:     make(map[string]*robotstxt.Group),
 	}
 }
-
 
 func (rc *RobotChecker) IsAllowed(targetURL string) (bool, error) {
 	parsedURL, err := url.Parse(targetURL)

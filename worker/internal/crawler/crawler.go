@@ -24,32 +24,32 @@ func NewCrawler() *Crawler {
 	}
 }
 
-   func NormalizeURL(rawURL string) (string, error) {
-        // Start with the standard safe flag set
-        flags := purell.FlagsSafe |
-            purell.FlagRemoveFragment |       // Ignore browser-side fragments
-            purell.FlagSortQuery |             // Order query params alphabetically
-            purell.FlagRemoveDuplicateSlashes  // Merge double slashes
+func NormalizeURL(rawURL string) (string, error) {
+	// Start with the standard safe flag set
+	flags := purell.FlagsSafe |
+		purell.FlagRemoveFragment | // Ignore browser-side fragments
+		purell.FlagSortQuery | // Order query params alphabetically
+		purell.FlagRemoveDuplicateSlashes // Merge double slashes
 
-        // Normalize URL
-        normalized, err := purell.NormalizeURLString(rawURL, flags)
-        if err != nil {
-            return "", err
-        }
-        return normalized, nil
+	// Normalize URL
+	normalized, err := purell.NormalizeURLString(rawURL, flags)
+	if err != nil {
+		return "", err
+	}
+	return normalized, nil
 }
 
-func (c *Crawler) CrawlUrl(rawUrl string , depth int) (models.UrlData, error) {
-	parsedUrl , err := urlParser.Parse(rawUrl)
-	if err != nil{
+func (c *Crawler) CrawlUrl(rawUrl string, depth int) (models.UrlData, error) {
+	parsedUrl, err := urlParser.Parse(rawUrl)
+	if err != nil {
 		log.Printf("ERROR : parsing url %v , %v\n", rawUrl, err)
 		return models.UrlData{}, err
 	}
 	url := parsedUrl.String()
-	url , err = NormalizeURL(url)
+	url, err = NormalizeURL(url)
 	if err != nil {
-		fmt.Printf("ERROR : url %v can't be normalized %v" , url , err)
-		return models.UrlData{} , err 
+		fmt.Printf("ERROR : url %v can't be normalized %v", url, err)
+		return models.UrlData{}, err
 	}
 	// Check robots.txt restrictions before crawling
 	allowed, err := c.RobotCheck.IsAllowed(url)
@@ -97,20 +97,20 @@ func (c *Crawler) CrawlUrl(rawUrl string , depth int) (models.UrlData, error) {
 			return
 		}
 		parsedHref, err := urlParser.Parse(href)
-        if err != nil {
-            log.Printf("ERROR : parsing extracted href %s: %v\n", href, err)
-            return
-        }
+		if err != nil {
+			log.Printf("ERROR : parsing extracted href %s: %v\n", href, err)
+			return
+		}
 
-        resolvedHref := parsedUrl.ResolveReference(parsedHref)
-        href = resolvedHref.String()
-		href , err = NormalizeURL(href)
-		 if err != nil {
-            log.Printf("ERROR : normalizing url %v: %v\n", href, err)
-            return
-        }
+		resolvedHref := parsedUrl.ResolveReference(parsedHref)
+		href = resolvedHref.String()
+		href, err = NormalizeURL(href)
+		if err != nil {
+			log.Printf("ERROR : normalizing url %v: %v\n", href, err)
+			return
+		}
 
-        nextUrls = append(nextUrls, href)
+		nextUrls = append(nextUrls, href)
 	})
 
 	return models.UrlData{
@@ -118,6 +118,6 @@ func (c *Crawler) CrawlUrl(rawUrl string , depth int) (models.UrlData, error) {
 		Url:       url,
 		NextUrls:  nextUrls,
 		HasRobots: false,
-		Depth: depth,
+		Depth:     depth,
 	}, nil
 }
