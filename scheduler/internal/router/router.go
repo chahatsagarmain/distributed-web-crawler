@@ -3,13 +3,14 @@ package router
 import (
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/handlers"
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func SetupRouter() *gin.Engine {
+func SetupRouter(ch *amqp.Channel) *gin.Engine {
 	r := gin.Default()
 
-	r.GET("/crawl", handlers.HandleCrawl)
-	r.POST("/crawl", handlers.HandleCrawl)
+	handleCrawl := handlers.MakeHandleCrawl(ch)
+	r.POST("/crawl", handleCrawl)
 
 	return r
 }

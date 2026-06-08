@@ -19,7 +19,7 @@ func main(){
 	}
 
 	crawler := crawler.NewCrawler()
-	resp , err := crawler.CrawlUrl("https://open.spotify.com/album/1aGapZGHBovnmhwqVNI6JZ")
+	resp , err := crawler.CrawlUrl("https://open.spotify.com/album/1aGapZGHBovnmhwqVNI6JZ", 0)
 	if err != nil{
 		log.Printf("ERROR : crawling error %v" , err)
 		return

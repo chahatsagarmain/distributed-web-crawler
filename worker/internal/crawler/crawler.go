@@ -118,6 +118,6 @@ func (c *Crawler) CrawlUrl(rawUrl string , depth int) (models.UrlData, error) {
 		Url:       url,
 		NextUrls:  nextUrls,
 		HasRobots: false,
-		Depth: depth + 1,
+		Depth: depth,
 	}, nil
 }
