@@ -1,24 +1,27 @@
 package main
 
 import (
-	"github.com/chahatsagarmain/distributed-web-crawler/common"
-	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/crawler"
 	"log"
+
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
+	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/broker"
 )
 
-var Conn *common.Connections
-
 func main() {
-	_, err := common.ConnectAll(common.AppConfig)
+	err := common.InitConfig()
 	if err != nil {
-		log.Fatalf("ERROR : connectiong to database or message broker %v", err)
+		log.Fatalf("ERROR initializing config: %v", err)
 	}
 
-	crawler := crawler.NewCrawler()
-	resp, err := crawler.CrawlUrl("https://open.spotify.com/album/1aGapZGHBovnmhwqVNI6JZ", 0)
+	conn, err := common.ConnectAll(common.AppConfig)
 	if err != nil {
-		log.Printf("ERROR : crawling error %v", err)
-		return
+		log.Fatalf("ERROR connecting to database or message broker: %v", err)
 	}
-	log.Printf("%v", resp.NextUrls)
+	defer conn.Close()
+
+	log.Println("Worker: Connected successfully, starting consumers...")
+	err = broker.StartConsumers(conn, common.AppConfig.QueueName)
+	if err != nil {
+		log.Fatalf("ERROR running consumers: %v", err)
+	}
 }

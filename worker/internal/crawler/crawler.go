@@ -8,8 +8,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/PuerkitoBio/purell"
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/robots"
-	"github.com/chahatsagarmain/distributed-web-crawler/worker/models"
 )
 
 type Crawler struct {
@@ -39,27 +39,27 @@ func NormalizeURL(rawURL string) (string, error) {
 	return normalized, nil
 }
 
-func (c *Crawler) CrawlUrl(rawUrl string, depth int) (models.UrlData, error) {
+func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	parsedUrl, err := urlParser.Parse(rawUrl)
 	if err != nil {
 		log.Printf("ERROR : parsing url %v , %v\n", rawUrl, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	url := parsedUrl.String()
 	url, err = NormalizeURL(url)
 	if err != nil {
 		fmt.Printf("ERROR : url %v can't be normalized %v", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	// Check robots.txt restrictions before crawling
 	allowed, err := c.RobotCheck.IsAllowed(url)
 	if err != nil {
 		log.Printf("ERROR : checking robots.txt for %s: %v\n", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	if !allowed {
 		log.Printf("INFO : URL %s is disallowed by robots.txt\n", url)
-		return models.UrlData{
+		return common.UrlData{
 			Url:       url,
 			HasRobots: true,
 		}, fmt.Errorf("URL disallowed by robots.txt")
@@ -67,7 +67,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (models.UrlData, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("ERROR : creating request to %s: %v\n", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)...")
 	req.Header.Add("Accept", "application/json")
@@ -76,18 +76,18 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (models.UrlData, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("ERROR : sending request to %s: %v\n", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	defer resp.Body.Close()
 	htmlDocument, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		log.Printf("ERROR : reading html %v: %v\n", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 	rawHtml, err := goquery.OuterHtml(htmlDocument.Selection)
 	if err != nil {
 		log.Printf("ERROR : reading html %v: %v\n", url, err)
-		return models.UrlData{}, err
+		return common.UrlData{}, err
 	}
 
 	var nextUrls []string
@@ -113,7 +113,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (models.UrlData, error) {
 		nextUrls = append(nextUrls, href)
 	})
 
-	return models.UrlData{
+	return common.UrlData{
 		RawHtml:   rawHtml,
 		Url:       url,
 		NextUrls:  nextUrls,

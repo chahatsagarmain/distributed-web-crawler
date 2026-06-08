@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/cache"
@@ -14,13 +15,13 @@ import (
 )
 
 const (
-	ConsistentHashingExchange = "consistent_hashing"
-	ResultExchange            = "result_exchange"
-	ResultQueue               = "result_queue"
-	ResultRoutingKey          = "result"
+	ConsistentHashingExchange = common.ConsistentHashingExchange
+	ResultExchange            = common.ResultExchange
+	ResultQueue               = common.ResultQueue
+	ResultRoutingKey          = common.ResultRoutingKey
 )
 
-var Queues = []string{"queue_1", "queue_2", "queue_3"}
+var Queues = common.Queues
 
 // SetupBroker declares the consistent hashing exchange, binds 3 queues to it,
 // and declares the result exchange with the result queue.
@@ -112,41 +113,6 @@ func SetupBroker(ch *amqp.Channel) error {
 	return nil
 }
 
-func ConsumeMessage(ch *amqp.Channel, rdb *redis.Client, dbchan chan []byte, maxDepth int) {
-	msg, ok, err := ch.Get(ResultQueue, true)
-	if !ok || err != nil {
-		return
-	}
-	dbchan <- msg.Body
-
-	var data common.UrlData
-	if err := json.Unmarshal(msg.Body, &data); err != nil {
-		log.Printf("ERROR unmarshalling result message: %v", err)
-		db.DecrementPending(rdb)
-		return
-	}
-
-	if data.Depth < maxDepth {
-		for _, nextURL := range data.NextUrls {
-			res, err := cache.CheckUrlDuplicate(rdb, nextURL)
-			if err == nil && !res {
-				_, err = db.IncrementPending(rdb, 1)
-				if err == nil {
-					err = InsertMessage(ch, nextURL, data.Depth, maxDepth)
-					if err != nil {
-						log.Printf("ERROR enqueuing link %s: %v", nextURL, err)
-						db.DecrementPending(rdb)
-					}
-				} else {
-					log.Printf("ERROR incrementing pending count: %v", err)
-				}
-			}
-		}
-	}
-
-	db.DecrementPending(rdb)
-}
-
 func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) error {
 	msg := common.CrawlMessage{
 		URL:          urlStr,
@@ -176,4 +142,142 @@ func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) 
 
 	log.Printf("Published message to consistent hashing exchange: URL=%s, CurrentDepth=%d, MaxDepth=%d", urlStr, currentDepth, maxDepth)
 	return nil
+}
+
+// StartResultConsumer starts consuming from ResultQueue in the background, updating last activity and processing results.
+// last ack time is required to detect inactivity and cleaning active job status
+func StartResultConsumer(conn *common.Connections, dbchan chan []byte) {
+	ch, err := conn.RabbitMQ.Conn.Channel()
+	if err != nil {
+		log.Fatalf("Scheduler: Failed to open RabbitMQ channel for result consumer: %v", err)
+	}
+
+	msgs, err := ch.Consume(
+		ResultQueue,
+		"",    // consumer name
+		true,  // autoAck
+		false, // exclusive
+		false, // noLocal
+		false, // noWait
+		nil,   // args
+	)
+	if err != nil {
+		log.Fatalf("Scheduler: Failed to consume from result queue: %v", err)
+	}
+
+	log.Printf("Scheduler: Listening for results on queue: %s", ResultQueue)
+	go func() {
+		defer ch.Close()
+		for msg := range msgs {
+			processResult(ch, conn.RedisClient, dbchan, msg.Body)
+		}
+	}()
+}
+
+func processResult(ch *amqp.Channel, rdb *redis.Client, dbchan chan []byte, body []byte) {
+	dbchan <- body // send for batch insert
+
+	ctx := context.Background()
+	err := rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), 1*time.Hour).Err()
+	if err != nil {
+		log.Printf("Scheduler WARNING: failed to update last activity time: %v", err)
+	}
+
+	var data common.UrlData
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Printf("Scheduler ERROR: unmarshalling result message: %v", err)
+		return
+	}
+
+	maxDepth, err := db.GetMaxDepth(rdb)
+	if err != nil {
+		log.Printf("Scheduler WARNING: failed to get max depth from Redis: %v", err)
+		maxDepth = data.Depth
+	}
+
+	// if depth is less than max depth then queue job
+	if data.Depth < maxDepth {
+		for _, nextURL := range data.NextUrls {
+			res, err := cache.CheckUrlDuplicate(rdb, nextURL)
+			if err == nil && !res {
+				err = InsertMessage(ch, nextURL, data.Depth+1, maxDepth)
+				if err != nil {
+					log.Printf("Scheduler ERROR: enqueuing link %s: %v", nextURL, err)
+				}
+			}
+		}
+	}
+}
+
+// watch dog to check for clearing active after time intervals
+
+func StartWatchdog(conn *common.Connections, interval time.Duration, idleTimeout int64) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			checkJobStatus(conn, idleTimeout)
+		}
+	}()
+}
+
+func checkJobStatus(conn *common.Connections, idleTimeout int64) {
+	rdb := conn.RedisClient
+	ctx := context.Background()
+
+	// now we check for active job
+	// create a temporary channel and conenct to each queue "passively"
+	// and if all queues are empty and the last ack >= idletimeout then
+	// we clean the job and take the next job
+	active, err := db.IsJobActive(rdb)
+	if err != nil || !active {
+		return
+	}
+
+	ch, err := conn.RabbitMQ.Conn.Channel()
+	if err != nil {
+		log.Printf("Scheduler Watchdog ERROR: failed to open channel: %v", err)
+		return
+	}
+	defer ch.Close()
+
+	for _, qName := range Queues {
+		q, err := ch.QueueDeclarePassive(qName, true, false, false, false, nil)
+		if err != nil {
+			log.Printf("Scheduler Watchdog WARNING: failed to inspect queue %s: %v", qName, err)
+			return
+		}
+		if q.Messages > 0 {
+			return // Queue is not empty
+		}
+	}
+
+	rq, err := ch.QueueDeclarePassive(ResultQueue, true, false, false, false, nil)
+	if err != nil {
+		log.Printf("Scheduler Watchdog WARNING: failed to inspect queue %s: %v", ResultQueue, err)
+		return
+	}
+	if rq.Messages > 0 {
+		return // Result queue is not empty
+	}
+
+	lastActStr, err := rdb.Get(ctx, "crawler:last_activity_time").Result()
+	if err != nil {
+		log.Printf("Scheduler Watchdog: last activity time missing, forcing cleanup")
+		db.ForceCleanupJob(rdb)
+		return
+	}
+
+	var lastAct int64
+	_, err = fmt.Sscanf(lastActStr, "%d", &lastAct)
+	if err != nil {
+		log.Printf("Scheduler Watchdog: failed to parse last activity time: %v", err)
+		db.ForceCleanupJob(rdb)
+		return
+	}
+
+	if time.Now().Unix()-lastAct > idleTimeout {
+		log.Printf("Scheduler Watchdog: No activity for %d seconds. Forcibly cleaning up job.", time.Now().Unix()-lastAct)
+		db.ForceCleanupJob(rdb)
+	}
 }

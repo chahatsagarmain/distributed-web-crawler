@@ -7,10 +7,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func SetupRouter(getChannel func() *amqp.Channel, getRedis func() *redis.Client) *gin.Engine {
+func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
 	r := gin.Default()
 
-	handleCrawl := handlers.MakeHandleCrawl(getChannel, getRedis)
+	handleCrawl := handlers.MakeHandleCrawl(ch, rdb)
 	r.GET("/crawl", handleCrawl)
 	r.POST("/crawl", handleCrawl)
 

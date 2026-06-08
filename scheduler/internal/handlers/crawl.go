@@ -17,7 +17,7 @@ type CrawlRequest struct {
 }
 
 // MakeHandleCrawl returns a gin.HandlerFunc that has access to the RabbitMQ channel and Redis client.
-func MakeHandleCrawl(getChannel func() *amqp.Channel, getRedis func() *redis.Client) gin.HandlerFunc {
+func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CrawlRequest
 		if err := c.ShouldBind(&req); err != nil {
@@ -30,7 +30,6 @@ func MakeHandleCrawl(getChannel func() *amqp.Channel, getRedis func() *redis.Cli
 			return
 		}
 
-		rdb := getRedis()
 		if rdb != nil {
 			// Check if a job is already running
 			active, err := db.IsJobActive(rdb)
@@ -45,7 +44,7 @@ func MakeHandleCrawl(getChannel func() *amqp.Channel, getRedis func() *redis.Cli
 			}
 
 			// Try to start the job and acquire lock
-			started, err := db.StartJob(rdb, req.URL)
+			started, err := db.StartJob(rdb, req.URL, req.Depth)
 			if err != nil {
 				log.Printf("ERROR starting job: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start job"})
@@ -59,15 +58,12 @@ func MakeHandleCrawl(getChannel func() *amqp.Channel, getRedis func() *redis.Cli
 			log.Printf("Warning: Redis client is nil, running in bypass/test mode without locks")
 		}
 
-		ch := getChannel()
 		if ch != nil {
 			err := broker.InsertMessage(ch, req.URL, 0, req.Depth)
 			if err != nil {
 				log.Printf("ERROR: failed to insert message to broker: %v", err)
-				// Clean up job lock if publish fails
 				if rdb != nil {
-					rdb.Del(c.Request.Context(), db.ActiveJobKey)
-					rdb.Del(c.Request.Context(), db.PendingCountsKey)
+					db.ForceCleanupJob(rdb)
 				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue job"})
 				return

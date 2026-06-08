@@ -3,13 +3,13 @@ package main
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/broker"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/cache"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/router"
-	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/redis/go-redis/v9"
 )
 
 var Conn *common.Connections
@@ -36,17 +36,17 @@ func main() {
 		log.Fatalf("Warning: failed to connect to database or message broker: %v", err)
 	}
 
-	r := router.SetupRouter(func() *amqp.Channel {
-		if Conn != nil && Conn.RabbitMQ != nil {
-			return Conn.RabbitMQ.Channel
-		}
-		return nil
-	}, func() *redis.Client {
-		if Conn != nil {
-			return Conn.RedisClient
-		}
-		return nil
-	})
+	// batch insert channel
+	dbchan := make(chan []byte, 1000)
+
+	batcher := db.NewBatcher()
+	go batcher.BatchInsert(Conn.MongoClient, dbchan)
+
+	broker.StartResultConsumer(Conn, dbchan)
+
+	broker.StartWatchdog(Conn, 10*time.Second, 30) // check every 10s, timeout after 30s of inactivity
+
+	r := router.SetupRouter(Conn.RabbitMQ.Channel, Conn.RedisClient)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

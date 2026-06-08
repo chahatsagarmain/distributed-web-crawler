@@ -14,6 +14,7 @@ type Config struct {
 	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
 	RedisDB       int    `mapstructure:"REDIS_DB"`
 	RabbitMQURI   string `mapstructure:"RABBITMQ_URI"`
+	QueueName     string `mapstructure:"QUEUE_NAME"`
 }
 
 var AppConfig Config
