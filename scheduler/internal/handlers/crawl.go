@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/broker"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	"github.com/gin-gonic/gin"
@@ -58,6 +59,12 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 		}
 
 		if ch != nil {
+			if rdb != nil {
+				_, err := cache.AddToBloom(rdb, req.URL)
+				if err != nil {
+					log.Printf("Warning: failed to add seed URL to bloom filter: %v", err)
+				}
+			}
 			err := broker.InsertMessage(ch, req.URL, 0, req.Depth)
 			if err != nil {
 				log.Printf("ERROR: failed to insert message to broker: %v", err)

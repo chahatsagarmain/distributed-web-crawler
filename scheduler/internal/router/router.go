@@ -11,7 +11,6 @@ func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
 	r := gin.Default()
 
 	handleCrawl := handlers.MakeHandleCrawl(ch, rdb)
-	r.GET("/crawl", handleCrawl)
 	r.POST("/crawl", handleCrawl)
 
 	return r

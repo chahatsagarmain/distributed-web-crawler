@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -13,7 +14,10 @@ const (
 
 func SetupBloomFilter(rdb *redis.Client) error {
 	if err := rdb.BFReserve(context.Background(), BloomFilterKey, 0.01, 1000000).Err(); err != nil {
-		fmt.Printf("ERROR: setting up bloom filter in redis %v", err)
+		if strings.Contains(err.Error(), "item exists") {
+			return nil
+		}
+		fmt.Printf("ERROR: setting up bloom filter in redis %v\n", err.Error())
 		return err
 	}
 	return nil

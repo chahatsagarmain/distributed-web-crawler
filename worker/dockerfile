@@ -7,6 +7,7 @@ WORKDIR /app
 COPY go.work go.work.sum ./
 COPY common/go.mod common/go.sum ./common/
 COPY worker/go.mod worker/go.sum ./worker/
+COPY scheduler/go.mod scheduler/go.sum ./scheduler/
 
 # Download dependencies
 RUN go work sync

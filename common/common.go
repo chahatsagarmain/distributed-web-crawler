@@ -83,6 +83,17 @@ func ConnectAll(cfg Config) (*Connections, error) {
 	}, nil
 }
 
+func (c *Connections) Ping() (error){
+	res := c.RedisClient.Ping(context.Background())
+	if res.Err() != nil {
+		return res.Err()
+	}
+	if err := c.MongoClient.Ping(context.Background() , nil) ; err != nil{
+		return err
+	}
+	return nil
+}
+
 // Close gracefully closes all active connections
 func (c *Connections) Close() {
 	if c.MongoClient != nil {

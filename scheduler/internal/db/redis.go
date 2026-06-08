@@ -38,6 +38,13 @@ func StartJob(rdb *redis.Client, urlStr string, maxDepth int) (bool, error) {
 		return false, fmt.Errorf("failed to initialize max depth in redis: %w", err)
 	}
 
+	err = rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), 1*time.Hour).Err()
+	if err != nil {
+		rdb.Del(ctx, ActiveJobKey)
+		rdb.Del(ctx, MaxDepthKey)
+		return false, fmt.Errorf("failed to initialize last activity time in redis: %w", err)
+	}
+
 	return true, nil
 }
 

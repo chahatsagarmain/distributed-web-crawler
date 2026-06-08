@@ -20,6 +20,13 @@ type Config struct {
 var AppConfig Config
 
 func InitConfig() error {
+	viper.SetDefault("MONGO_URI", "mongodb://admin:password@localhost:27017")
+	viper.SetDefault("REDIS_ADDR", "localhost:6379")
+	viper.SetDefault("REDIS_PASSWORD", "")
+	viper.SetDefault("REDIS_DB", 0)
+	viper.SetDefault("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/")
+	viper.SetDefault("QUEUE_NAME", "")
+
 	viper.SetConfigType("env")
 
 	// Walk up directories to find the .env file

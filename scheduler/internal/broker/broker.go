@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
@@ -27,7 +28,6 @@ var Queues = common.Queues
 // SetupBroker declares the consistent hashing exchange, binds 3 queues to it,
 // and declares the result exchange with the result queue.
 func SetupBroker(ch *amqp.Channel) error {
-	// 1. Declare consistent hashing exchange
 	err := ch.ExchangeDeclare(
 		ConsistentHashingExchange, // name
 		"x-consistent-hash",       // type
@@ -42,7 +42,6 @@ func SetupBroker(ch *amqp.Channel) error {
 	}
 	log.Printf("Declared consistent hashing exchange: %s", ConsistentHashingExchange)
 
-	// 2. Declare and bind 3 queues
 	for _, qName := range Queues {
 		q, err := ch.QueueDeclare(
 			qName, // name
@@ -85,7 +84,6 @@ func SetupBroker(ch *amqp.Channel) error {
 	}
 	log.Printf("Declared result exchange: %s", ResultExchange)
 
-	// 4. Declare result queue
 	rq, err := ch.QueueDeclare(
 		ResultQueue, // name
 		true,        // durable
@@ -98,7 +96,6 @@ func SetupBroker(ch *amqp.Channel) error {
 		return fmt.Errorf("failed to declare result queue %s: %w", ResultQueue, err)
 	}
 
-	// 5. Bind result queue to result exchange
 	err = ch.QueueBind(
 		rq.Name,          // queue name
 		ResultRoutingKey, // routing key
@@ -169,9 +166,17 @@ func StartResultConsumer(conn *common.Connections, dbchan chan []byte) {
 	log.Printf("Scheduler: Listening for results on queue: %s", ResultQueue)
 	go func() {
 		defer ch.Close()
-		for msg := range msgs {
-			processResult(ch, conn.RedisClient, dbchan, msg.Body)
+		var wg sync.WaitGroup
+		for i := 0 ; i < 5 ; i++{
+			wg.Add(1)
+			go func(){
+				defer wg.Done()
+				for msg := range msgs {
+					processResult(ch, conn.RedisClient, dbchan, msg.Body)
+				}
+			}()
 		}
+		wg.Wait()
 	}()
 }
 
@@ -191,16 +196,27 @@ func processResult(ch *amqp.Channel, rdb *redis.Client, dbchan chan []byte, body
 	}
 
 	maxDepth, err := db.GetMaxDepth(rdb)
+	log.Printf("MAX DEPTH HERE IS %v" , maxDepth)
 	if err != nil {
-		log.Printf("Scheduler WARNING: failed to get max depth from Redis: %v", err)
+		if err == redis.Nil {
+			log.Printf("Scheduler INFO: job is no longer active (max depth key deleted/expired)")
+		} else {
+			log.Printf("Scheduler WARNING: failed to get max depth from Redis: %v", err.Error())
+		}
 		maxDepth = data.Depth
+		log.Printf("MAX DEPTH JUST BELOW IS %v" , maxDepth)
 	}
 
 	// if depth is less than max depth then queue job
 	if data.Depth < maxDepth {
+		log.Printf("CURRENT DEPTH HERE %v" , data.Depth)
+		log.Printf("NEXT URL : %v" , data.NextUrls[0])
 		for _, nextURL := range data.NextUrls {
 			res, err := cache.CheckUrlDuplicate(rdb, nextURL)
+			
 			if err == nil && !res {
+				log.Printf("INSERT %v url to bloom" , nextURL)
+				_, _ = cache.AddToBloom(rdb, nextURL)
 				err = InsertMessage(ch, nextURL, data.Depth+1, maxDepth)
 				if err != nil {
 					log.Printf("Scheduler ERROR: enqueuing link %s: %v", nextURL, err)

@@ -42,25 +42,10 @@ func (_ Batcher) Insert(conn *mongo.Client, documents []interface{}) {
 
 func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 	ticker := time.NewTicker(time.Second * TickerInterval)
-	done := make(chan bool)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			b.Lock()
-			size := len(b.data)
-			var documents []interface{}
-			for _, val := range b.data {
-				documents = append(documents, val)
-			}
-			b.data = b.data[:0]
-			b.Unlock()
-
-			if size > 0 {
-				log.Printf("BATCH INSERT started of %v size", size)
-				b.Insert(conn, documents)
-			}
-		case <-done:
 			b.Lock()
 			size := len(b.data)
 			var documents []interface{}
@@ -83,8 +68,12 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 			}
 			b.Lock()
 			b.data = append(b.data, doc)
+			var documents []interface{}
 			if len(b.data) >= BatchSize {
-				done <- true
+				for _, val := range b.data {
+					documents = append(documents, val)
+				}
+				b.data = b.data[:0]
 			}
 			b.Unlock()
 		}

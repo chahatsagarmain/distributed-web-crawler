@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	urlParser "net/url"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/PuerkitoBio/purell"
@@ -19,7 +20,9 @@ type Crawler struct {
 
 func NewCrawler() *Crawler {
 	return &Crawler{
-		Client:     &http.Client{},
+		Client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 		RobotCheck: robots.NewRobotChecker(),
 	}
 }

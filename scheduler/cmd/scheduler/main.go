@@ -24,6 +24,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Warning: failed to connect to database or message broker: %v", err)
 	}
+	if err := Conn.Ping() ; err != nil{
+		log.Fatalf("ERROR : ping error %v" , err)
+	}
+	log.Printf("PINGED!!!")
+
 	defer Conn.Close()
 
 	err = broker.SetupBroker(Conn.RabbitMQ.Channel)
@@ -33,7 +38,7 @@ func main() {
 
 	err = cache.SetupBloomFilter(Conn.RedisClient)
 	if err != nil {
-		log.Fatalf("Warning: failed to connect to database or message broker: %v", err)
+		log.Fatalf("Warning: In bloom filter failed to connect to database: %v", err)
 	}
 
 	// batch insert channel

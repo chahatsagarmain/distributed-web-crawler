@@ -41,8 +41,8 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 			}
 			defer ch.Close()
 
-			// prefetch count to 1
-			err = ch.Qos(1, 0, false)
+			// set prefetch Qos to match concurrency limit 
+			err = ch.Qos(5, 0, false)
 			if err != nil {
 				log.Printf("Worker WARNING: failed to set Qos for queue %s: %v", q, err)
 			}
@@ -50,7 +50,7 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 			msgs, err := ch.Consume(
 				q,     // queue
 				"",    // consumer name (empty for auto-generated)
-				true,  // autoAck (true: message is auto-acked on receipt)
+				false, // autoAck (false: manual ack to manage backpressure)
 				false, // exclusive
 				false, // noLocal
 				false, // noWait
@@ -63,13 +63,20 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 			}
 
 			log.Printf("Worker: Listening for messages on queue: %s", q)
-			for msg := range msgs {
-				processMessage(ch, msg, c)
+			var wgWorkers sync.WaitGroup
+			for i := 0 ; i < 5 ; i++{
+				wgWorkers.Add(1)
+				go func(){
+					defer wgWorkers.Done()
+					for msg := range msgs {
+						processMessage(ch , msg , c)
+					}
+				}()
 			}
+			wgWorkers.Wait()
 			log.Printf("Worker: Consumer for queue %s stopped", q)
 		}(qName)
 	}
-
 	wg.Wait()
 	close(errChan)
 
@@ -80,6 +87,8 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 }
 
 func processMessage(ch *amqp.Channel, d amqp.Delivery, c *crawler.Crawler) {
+	defer d.Ack(false) // Acknowledge message on exit 
+
 	var crawlMsg common.CrawlMessage
 	if err := json.Unmarshal(d.Body, &crawlMsg); err != nil {
 		log.Printf("Worker ERROR: failed to unmarshal CrawlMessage: %v", err)
@@ -123,6 +132,6 @@ func processMessage(ch *amqp.Channel, d amqp.Delivery, c *crawler.Crawler) {
 		log.Printf("Worker ERROR: failed to publish result for %s to result queue: %v", crawlMsg.URL, err)
 		return
 	}
-
+	
 	log.Printf("Worker: Successfully crawled and published results for %s", crawlMsg.URL)
 }

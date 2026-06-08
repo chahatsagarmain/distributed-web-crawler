@@ -6,6 +6,7 @@ WORKDIR /app
 # Copy workspace configuration and module definition files
 COPY go.work go.work.sum ./
 COPY common/go.mod common/go.sum ./common/
+COPY worker/go.mod worker/go.sum ./worker/
 COPY scheduler/go.mod scheduler/go.sum ./scheduler/
 
 # Download dependencies
