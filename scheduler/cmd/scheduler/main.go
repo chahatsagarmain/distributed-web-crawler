@@ -7,7 +7,7 @@ import (
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/broker"
-	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/cache"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/router"
 )

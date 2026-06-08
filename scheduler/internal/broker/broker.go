@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
-	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/cache"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
@@ -269,7 +270,7 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 	}
 
 	var lastAct int64
-	_, err = fmt.Sscanf(lastActStr, "%d", &lastAct)
+	lastAct , err = strconv.ParseInt(lastActStr , 10 , 64)
 	if err != nil {
 		log.Printf("Scheduler Watchdog: failed to parse last activity time: %v", err)
 		db.ForceCleanupJob(rdb)

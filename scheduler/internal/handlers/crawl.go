@@ -43,7 +43,6 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 				return
 			}
 
-			// Try to start the job and acquire lock
 			started, err := db.StartJob(rdb, req.URL, req.Depth)
 			if err != nil {
 				log.Printf("ERROR starting job: %v", err)
