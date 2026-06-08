@@ -46,6 +46,43 @@ services:
     volumes:
       - redis-data:/data
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: ./scheduler/Dockerfile
+    container_name: scheduler
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://admin:password@mongodb:27017
+      - REDIS_ADDR=redis:6379
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - mongodb
+      - redis
+      - rabbitmq
+  
+  worker:
+    build:
+      context: .
+      dockerfile: ./worker/Dockerfile
+    deploy:
+      mode: replicated
+      replicas: 3 
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://admin:password@mongodb:27017
+      - REDIS_ADDR=redis:6379
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - mongodb
+      - redis
+      - rabbitmq
+
+  
 volumes:
   mongo-data:
   rabbitmq-data:

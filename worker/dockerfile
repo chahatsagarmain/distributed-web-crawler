@@ -1,0 +1,25 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+# Copy workspace configuration and module definition files
+COPY go.work go.work.sum ./
+COPY common/go.mod common/go.sum ./common/
+COPY worker/go.mod worker/go.sum ./worker/
+
+# Download dependencies
+RUN go work sync
+
+# Copy source files
+COPY common/ ./common/
+COPY worker/ ./worker/
+
+# Build worker binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/worker-bin ./worker/cmd/main.go
+
+# Final runner stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/worker-bin .
+CMD ["./worker-bin"]

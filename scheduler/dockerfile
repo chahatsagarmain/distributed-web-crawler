@@ -1,0 +1,26 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+# Copy workspace configuration and module definition files
+COPY go.work go.work.sum ./
+COPY common/go.mod common/go.sum ./common/
+COPY scheduler/go.mod scheduler/go.sum ./scheduler/
+
+# Download dependencies
+RUN go work sync
+
+# Copy source files
+COPY common/ ./common/
+COPY scheduler/ ./scheduler/
+
+# Build scheduler binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/scheduler-bin ./scheduler/cmd/scheduler/main.go
+
+# Final light weight runner stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/scheduler-bin .
+EXPOSE 8080
+CMD ["./scheduler-bin"]
