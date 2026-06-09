@@ -3,7 +3,7 @@ package broker
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
@@ -20,7 +20,7 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 		targetQueues = common.Queues
 	}
 
-	log.Printf("Worker: Starting consumers for queues: %v", targetQueues)
+	slog.Info("Worker: Starting consumers", "queues", targetQueues)
 
 	c := crawler.NewCrawler()
 
@@ -35,7 +35,7 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 			// Open a dedicated channel for this queue consumer
 			ch, err := conn.RabbitMQ.Conn.Channel()
 			if err != nil {
-				log.Printf("Worker ERROR: failed to open channel for queue %s: %v", q, err)
+				slog.Error("Worker ERROR: failed to open channel", "queue", q, "error", err)
 				errChan <- err
 				return
 			}
@@ -44,7 +44,7 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 			// set prefetch Qos to match concurrency limit 
 			err = ch.Qos(5, 0, false)
 			if err != nil {
-				log.Printf("Worker WARNING: failed to set Qos for queue %s: %v", q, err)
+				slog.Warn("Worker WARNING: failed to set Qos", "queue", q, "error", err)
 			}
 
 			msgs, err := ch.Consume(
@@ -57,12 +57,12 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 				nil,   // args
 			)
 			if err != nil {
-				log.Printf("Worker ERROR: failed to consume from queue %s: %v", q, err)
+				slog.Error("Worker ERROR: failed to consume from queue", "queue", q, "error", err)
 				errChan <- err
 				return
 			}
 
-			log.Printf("Worker: Listening for messages on queue: %s", q)
+			slog.Info("Worker: Listening for messages", "queue", q)
 			var wgWorkers sync.WaitGroup
 			for i := 0 ; i < 5 ; i++{
 				wgWorkers.Add(1)
@@ -74,7 +74,7 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 				}()
 			}
 			wgWorkers.Wait()
-			log.Printf("Worker: Consumer for queue %s stopped", q)
+			slog.Info("Worker: Consumer stopped", "queue", q)
 		}(qName)
 	}
 	wg.Wait()
@@ -91,15 +91,15 @@ func processMessage(ch *amqp.Channel, d amqp.Delivery, c *crawler.Crawler) {
 
 	var crawlMsg common.CrawlMessage
 	if err := json.Unmarshal(d.Body, &crawlMsg); err != nil {
-		log.Printf("Worker ERROR: failed to unmarshal CrawlMessage: %v", err)
+		slog.Error("Worker ERROR: failed to unmarshal CrawlMessage", "error", err)
 		return
 	}
 
-	log.Printf("Worker: Received task: URL=%s, Depth=%d, MaxDepth=%d", crawlMsg.URL, crawlMsg.CurrentDepth, crawlMsg.MaxDepth)
+	slog.Info("Worker: Received task", "url", crawlMsg.URL, "depth", crawlMsg.CurrentDepth, "maxDepth", crawlMsg.MaxDepth)
 	crawlResult, err := c.CrawlUrl(crawlMsg.URL, crawlMsg.CurrentDepth)
 
 	if err != nil {
-		log.Printf("Worker WARNING: Crawl failed for %s: %v", crawlMsg.URL, err)
+		slog.Warn("Worker WARNING: Crawl failed", "url", crawlMsg.URL, "error", err)
 		return
 	}
 
@@ -113,7 +113,7 @@ func processMessage(ch *amqp.Channel, d amqp.Delivery, c *crawler.Crawler) {
 
 	respBody, err := json.Marshal(result)
 	if err != nil {
-		log.Printf("Worker ERROR: failed to marshal UrlData: %v", err)
+		slog.Error("Worker ERROR: failed to marshal UrlData", "error", err)
 		return
 	}
 
@@ -129,9 +129,9 @@ func processMessage(ch *amqp.Channel, d amqp.Delivery, c *crawler.Crawler) {
 		},
 	)
 	if err != nil {
-		log.Printf("Worker ERROR: failed to publish result for %s to result queue: %v", crawlMsg.URL, err)
+		slog.Error("Worker ERROR: failed to publish result", "url", crawlMsg.URL, "error", err)
 		return
 	}
 	
-	log.Printf("Worker: Successfully crawled and published results for %s", crawlMsg.URL)
+	slog.Info("Worker: Successfully crawled and published results", "url", crawlMsg.URL)
 }

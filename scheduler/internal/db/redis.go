@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -24,7 +25,7 @@ func IsJobActive(rdb *redis.Client) (bool, error) {
 
 func StartJob(rdb *redis.Client, urlStr string, maxDepth int) (bool, error) {
 	ctx := context.Background()
-	success, err := rdb.SetNX(ctx, ActiveJobKey, urlStr, 1*time.Hour).Result()
+	success, err := rdb.SetNX(ctx, ActiveJobKey, urlStr, time.Duration(common.AppConfig.JobTTL)*time.Hour).Result()
 	if err != nil {
 		return false, fmt.Errorf("failed to set active job in redis: %w", err)
 	}
@@ -32,13 +33,13 @@ func StartJob(rdb *redis.Client, urlStr string, maxDepth int) (bool, error) {
 		return false, nil
 	}
 
-	err = rdb.Set(ctx, MaxDepthKey, maxDepth, 1*time.Hour).Err()
+	err = rdb.Set(ctx, MaxDepthKey, maxDepth, time.Duration(common.AppConfig.JobTTL)*time.Hour).Err()
 	if err != nil {
 		rdb.Del(ctx, ActiveJobKey)
 		return false, fmt.Errorf("failed to initialize max depth in redis: %w", err)
 	}
 
-	err = rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), 1*time.Hour).Err()
+	err = rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), time.Duration(common.AppConfig.JobTTL)*time.Hour).Err()
 	if err != nil {
 		rdb.Del(ctx, ActiveJobKey)
 		rdb.Del(ctx, MaxDepthKey)

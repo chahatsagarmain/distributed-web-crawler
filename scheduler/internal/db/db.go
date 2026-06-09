@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -36,7 +36,7 @@ func (_ Batcher) Insert(conn *mongo.Client, documents []interface{}) {
 	defer cancel()
 	_, err := col.InsertMany(ctx, documents)
 	if err != nil {
-		log.Printf("ERROR PERFORMING INSERT: %v", err)
+		slog.Error("ERROR PERFORMING INSERT", "error", err)
 	}
 }
 
@@ -56,14 +56,14 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 			b.Unlock()
 
 			if size > 0 {
-				log.Printf("BATCH INSERT started of %v size", size)
-				b.Insert(conn, documents)
+				slog.Info("BATCH INSERT started", "size", size)
+				go b.Insert(conn, documents)
 			}
 		case val := <-dbchan:
-			log.Printf("INSERT DOCUMENT %v", string(val))
+			slog.Info("INSERT DOCUMENT", "doc", string(val))
 			var doc common.UrlData
 			if err := json.Unmarshal(val, &doc); err != nil {
-				log.Printf("ERROR: unmarshalling db document: %v", err)
+				slog.Error("ERROR: unmarshalling db document", "error", err)
 				continue
 			}
 			b.Lock()
@@ -76,6 +76,11 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 				b.data = b.data[:0]
 			}
 			b.Unlock()
+
+			if len(documents) > 0 {
+				slog.Info("BATCH INSERT started", "size", len(documents))
+				go b.Insert(conn, documents)
+			}
 		}
 	}
 }

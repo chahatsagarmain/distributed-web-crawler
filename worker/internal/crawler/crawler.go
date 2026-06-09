@@ -2,7 +2,7 @@ package crawler
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	urlParser "net/url"
 	"time"
@@ -19,9 +19,16 @@ type Crawler struct {
 }
 
 func NewCrawler() *Crawler {
+	transport := &http.Transport{
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	return &Crawler{
 		Client: &http.Client{
-			Timeout: 10 * time.Second,
+			Transport: transport,
+			Timeout:   10 * time.Second,
 		},
 		RobotCheck: robots.NewRobotChecker(),
 	}
@@ -45,23 +52,23 @@ func NormalizeURL(rawURL string) (string, error) {
 func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	parsedUrl, err := urlParser.Parse(rawUrl)
 	if err != nil {
-		log.Printf("ERROR : parsing url %v , %v\n", rawUrl, err)
+		slog.Error("parsing url", "url", rawUrl, "error", err)
 		return common.UrlData{}, err
 	}
 	url := parsedUrl.String()
 	url, err = NormalizeURL(url)
 	if err != nil {
-		fmt.Printf("ERROR : url %v can't be normalized %v", url, err)
+		slog.Error("url can't be normalized", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	// Check robots.txt restrictions before crawling
 	allowed, err := c.RobotCheck.IsAllowed(url)
 	if err != nil {
-		log.Printf("ERROR : checking robots.txt for %s: %v\n", url, err)
+		slog.Error("checking robots.txt", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	if !allowed {
-		log.Printf("INFO : URL %s is disallowed by robots.txt\n", url)
+		slog.Info("URL is disallowed by robots.txt", "url", url)
 		return common.UrlData{
 			Url:       url,
 			HasRobots: true,
@@ -69,7 +76,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("ERROR : creating request to %s: %v\n", url, err)
+		slog.Error("creating request", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)...")
@@ -78,18 +85,18 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	client := c.Client
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("ERROR : sending request to %s: %v\n", url, err)
+		slog.Error("sending request", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	defer resp.Body.Close()
 	htmlDocument, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		log.Printf("ERROR : reading html %v: %v\n", url, err)
+		slog.Error("reading html", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	rawHtml, err := goquery.OuterHtml(htmlDocument.Selection)
 	if err != nil {
-		log.Printf("ERROR : reading html %v: %v\n", url, err)
+		slog.Error("reading html", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 
@@ -101,7 +108,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 		}
 		parsedHref, err := urlParser.Parse(href)
 		if err != nil {
-			log.Printf("ERROR : parsing extracted href %s: %v\n", href, err)
+			slog.Error("parsing extracted href", "href", href, "error", err)
 			return
 		}
 
@@ -109,7 +116,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 		href = resolvedHref.String()
 		href, err = NormalizeURL(href)
 		if err != nil {
-			log.Printf("ERROR : normalizing url %v: %v\n", href, err)
+			slog.Error("normalizing url", "url", href, "error", err)
 			return
 		}
 

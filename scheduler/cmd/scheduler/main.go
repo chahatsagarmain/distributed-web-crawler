@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -17,28 +18,33 @@ var Conn *common.Connections
 func main() {
 	err := common.InitConfig()
 	if err != nil {
-		log.Fatalf("Warning: initializing configuration failed: %v", err)
+		slog.Error("Warning: initializing configuration failed", "error", err)
+		os.Exit(1)
 	}
 
 	Conn, err = common.ConnectAll(common.AppConfig)
 	if err != nil {
-		log.Fatalf("Warning: failed to connect to database or message broker: %v", err)
+		slog.Error("Warning: failed to connect to database or message broker", "error", err)
+		os.Exit(1)
 	}
 	if err := Conn.Ping() ; err != nil{
-		log.Fatalf("ERROR : ping error %v" , err)
+		slog.Error("ERROR : ping error", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("PINGED!!!")
+	slog.Info("PINGED!!!")
 
 	defer Conn.Close()
 
 	err = broker.SetupBroker(Conn.RabbitMQ.Channel)
 	if err != nil {
-		log.Fatalf("Warning: failed to setup broker: %v", err)
+		slog.Error("Warning: failed to setup broker", "error", err)
+		os.Exit(1)
 	}
 
 	err = cache.SetupBloomFilter(Conn.RedisClient)
 	if err != nil {
-		log.Fatalf("Warning: In bloom filter failed to connect to database: %v", err)
+		slog.Error("Warning: In bloom filter failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 
 	// batch insert channel
@@ -49,7 +55,7 @@ func main() {
 
 	broker.StartResultConsumer(Conn, dbchan)
 
-	broker.StartWatchdog(Conn, 10*time.Second, 30) // check every 10s, timeout after 30s of inactivity
+	broker.StartWatchdog(Conn, 10*time.Second, 300) // check every 10s, timeout after 300s of inactivity
 
 	r := router.SetupRouter(Conn.RabbitMQ.Channel, Conn.RedisClient)
 
@@ -57,9 +63,10 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Println("Starting scheduler server on :8080...")
+		slog.Info("Starting scheduler server on :8080...")
 		if err := r.Run(":8080"); err != nil {
-			log.Fatalf("Failed to run server: %v", err)
+			slog.Error("Failed to run server", "error", err)
+			os.Exit(1)
 		}
 	}()
 

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/broker"
@@ -10,18 +11,21 @@ import (
 func main() {
 	err := common.InitConfig()
 	if err != nil {
-		log.Fatalf("ERROR initializing config: %v", err)
+		slog.Error("Worker ERROR: initializing configuration failed", "error", err)
+		os.Exit(1)
 	}
 
 	conn, err := common.ConnectAll(common.AppConfig)
 	if err != nil {
-		log.Fatalf("ERROR connecting to database or message broker: %v", err)
+		slog.Error("Worker ERROR: failed to connect to database or message broker", "error", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
-	log.Println("Worker: Connected successfully, starting consumers...")
+	slog.Info("Worker: Connected successfully, starting consumers...")
 	err = broker.StartConsumers(conn, common.AppConfig.QueueName)
 	if err != nil {
-		log.Fatalf("ERROR running consumers: %v", err)
+		slog.Error("Worker ERROR: consumers failed", "error", err)
+		os.Exit(1)
 	}
 }

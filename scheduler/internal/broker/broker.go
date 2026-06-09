@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ func SetupBroker(ch *amqp.Channel) error {
 	if err != nil {
 		return fmt.Errorf("failed to declare consistent hashing exchange: %w", err)
 	}
-	log.Printf("Declared consistent hashing exchange: %s", ConsistentHashingExchange)
+	slog.Info("Declared consistent hashing exchange", "exchange", ConsistentHashingExchange)
 
 	for _, qName := range Queues {
 		q, err := ch.QueueDeclare(
@@ -49,7 +50,7 @@ func SetupBroker(ch *amqp.Channel) error {
 			false, // auto-delete
 			false, // exclusive
 			false, // no-wait
-			nil,   // arguments
+			amqp.Table{"x-max-length": 10000}, // arguments
 		)
 		if err != nil {
 			return fmt.Errorf("failed to declare queue %s: %w", qName, err)
@@ -66,7 +67,7 @@ func SetupBroker(ch *amqp.Channel) error {
 		if err != nil {
 			return fmt.Errorf("failed to bind queue %s to exchange %s: %w", qName, ConsistentHashingExchange, err)
 		}
-		log.Printf("Declared and bound queue: %s to %s with weight 10", qName, ConsistentHashingExchange)
+		slog.Info("Declared and bound queue", "queue", qName, "exchange", ConsistentHashingExchange, "weight", 10)
 	}
 
 	// 3. Declare result exchange
@@ -82,7 +83,7 @@ func SetupBroker(ch *amqp.Channel) error {
 	if err != nil {
 		return fmt.Errorf("failed to declare result exchange: %w", err)
 	}
-	log.Printf("Declared result exchange: %s", ResultExchange)
+	slog.Info("Declared result exchange", "exchange", ResultExchange)
 
 	rq, err := ch.QueueDeclare(
 		ResultQueue, // name
@@ -90,7 +91,7 @@ func SetupBroker(ch *amqp.Channel) error {
 		false,       // auto-delete
 		false,       // exclusive
 		false,       // no-wait
-		nil,         // arguments
+		amqp.Table{"x-max-length": 10000}, // arguments
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare result queue %s: %w", ResultQueue, err)
@@ -106,7 +107,7 @@ func SetupBroker(ch *amqp.Channel) error {
 	if err != nil {
 		return fmt.Errorf("failed to bind result queue %s to exchange %s: %w", ResultQueue, ResultExchange, err)
 	}
-	log.Printf("Declared and bound result queue: %s to %s with routing key %s", ResultQueue, ResultExchange, ResultRoutingKey)
+	slog.Info("Declared and bound result queue", "queue", ResultQueue, "exchange", ResultExchange, "routingKey", ResultRoutingKey)
 
 	return nil
 }
@@ -138,7 +139,7 @@ func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) 
 		return fmt.Errorf("failed to publish message to consistent hashing exchange: %w", err)
 	}
 
-	log.Printf("Published message to consistent hashing exchange: URL=%s, CurrentDepth=%d, MaxDepth=%d", urlStr, currentDepth, maxDepth)
+	slog.Info("Published message to consistent hashing exchange", "url", urlStr, "currentDepth", currentDepth, "maxDepth", maxDepth)
 	return nil
 }
 
@@ -147,7 +148,8 @@ func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) 
 func StartResultConsumer(conn *common.Connections, dbchan chan []byte) {
 	ch, err := conn.RabbitMQ.Conn.Channel()
 	if err != nil {
-		log.Fatalf("Scheduler: Failed to open RabbitMQ channel for result consumer: %v", err)
+		slog.Error("Scheduler: Failed to open RabbitMQ channel for result consumer", "error", err)
+		os.Exit(1)
 	}
 
 	msgs, err := ch.Consume(
@@ -160,10 +162,11 @@ func StartResultConsumer(conn *common.Connections, dbchan chan []byte) {
 		nil,   // args
 	)
 	if err != nil {
-		log.Fatalf("Scheduler: Failed to consume from result queue: %v", err)
+		slog.Error("Scheduler: Failed to consume from result queue", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Scheduler: Listening for results on queue: %s", ResultQueue)
+	slog.Info("Scheduler: Listening for results", "queue", ResultQueue)
 	go func() {
 		defer ch.Close()
 		var wg sync.WaitGroup
@@ -184,43 +187,46 @@ func processResult(ch *amqp.Channel, rdb *redis.Client, dbchan chan []byte, body
 	dbchan <- body // send for batch insert
 
 	ctx := context.Background()
-	err := rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), 1*time.Hour).Err()
+	err := rdb.Set(ctx, "crawler:last_activity_time", time.Now().Unix(), time.Duration(common.AppConfig.JobTTL)*time.Hour).Err()
 	if err != nil {
-		log.Printf("Scheduler WARNING: failed to update last activity time: %v", err)
+		slog.Warn("Scheduler WARNING: failed to update last activity time", "error", err)
 	}
 
 	var data common.UrlData
 	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Scheduler ERROR: unmarshalling result message: %v", err)
+		slog.Error("Scheduler ERROR: unmarshalling result message", "error", err)
 		return
 	}
 
 	maxDepth, err := db.GetMaxDepth(rdb)
-	log.Printf("MAX DEPTH HERE IS %v" , maxDepth)
+	slog.Info("MAX DEPTH HERE IS", "maxDepth", maxDepth)
 	if err != nil {
 		if err == redis.Nil {
-			log.Printf("Scheduler INFO: job is no longer active (max depth key deleted/expired)")
+			slog.Info("Scheduler INFO: job is no longer active (max depth key deleted/expired)")
 		} else {
-			log.Printf("Scheduler WARNING: failed to get max depth from Redis: %v", err.Error())
+			slog.Warn("Scheduler WARNING: failed to get max depth from Redis", "error", err.Error())
 		}
 		maxDepth = data.Depth
-		log.Printf("MAX DEPTH JUST BELOW IS %v" , maxDepth)
+		slog.Info("MAX DEPTH JUST BELOW IS", "maxDepth", maxDepth)
 	}
 
 	// if depth is less than max depth then queue job
 	if data.Depth < maxDepth {
-		log.Printf("CURRENT DEPTH HERE %v" , data.Depth)
-		log.Printf("NEXT URL : %v" , data.NextUrls[0])
-		for _, nextURL := range data.NextUrls {
+		slog.Info("CURRENT DEPTH HERE", "depth", data.Depth)
+		if len(data.NextUrls) > 0 {
+			slog.Info("NEXT URL", "url", data.NextUrls[0])
+		}
+		limit := int(float32(len(data.NextUrls)) * (1.00 - common.AppConfig.DropNextUrlRate));
+		for _, nextURL := range data.NextUrls[:limit] {
 			res, err := cache.CheckUrlDuplicate(rdb, nextURL)
-			
 			if err == nil && !res {
-				log.Printf("INSERT %v url to bloom" , nextURL)
+				slog.Info("INSERT url to bloom", "url", nextURL)
 				_, _ = cache.AddToBloom(rdb, nextURL)
 				err = InsertMessage(ch, nextURL, data.Depth+1, maxDepth)
 				if err != nil {
-					log.Printf("Scheduler ERROR: enqueuing link %s: %v", nextURL, err)
+					slog.Error("Scheduler ERROR: enqueuing link", "url", nextURL, "error", err)
 				}
+				time.Sleep(time.Duration(common.AppConfig.TimeDelay) * time.Millisecond)
 			}
 		}
 	}
@@ -253,7 +259,7 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 
 	ch, err := conn.RabbitMQ.Conn.Channel()
 	if err != nil {
-		log.Printf("Scheduler Watchdog ERROR: failed to open channel: %v", err)
+		slog.Error("Scheduler Watchdog ERROR: failed to open channel", "error", err)
 		return
 	}
 	defer ch.Close()
@@ -261,7 +267,7 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 	for _, qName := range Queues {
 		q, err := ch.QueueDeclarePassive(qName, true, false, false, false, nil)
 		if err != nil {
-			log.Printf("Scheduler Watchdog WARNING: failed to inspect queue %s: %v", qName, err)
+			slog.Warn("Scheduler Watchdog WARNING: failed to inspect queue", "queue", qName, "error", err)
 			return
 		}
 		if q.Messages > 0 {
@@ -271,7 +277,7 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 
 	rq, err := ch.QueueDeclarePassive(ResultQueue, true, false, false, false, nil)
 	if err != nil {
-		log.Printf("Scheduler Watchdog WARNING: failed to inspect queue %s: %v", ResultQueue, err)
+		slog.Warn("Scheduler Watchdog WARNING: failed to inspect queue", "queue", ResultQueue, "error", err)
 		return
 	}
 	if rq.Messages > 0 {
@@ -280,7 +286,7 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 
 	lastActStr, err := rdb.Get(ctx, "crawler:last_activity_time").Result()
 	if err != nil {
-		log.Printf("Scheduler Watchdog: last activity time missing, forcing cleanup")
+		slog.Info("Scheduler Watchdog: last activity time missing, forcing cleanup")
 		db.ForceCleanupJob(rdb)
 		return
 	}
@@ -288,13 +294,13 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 	var lastAct int64
 	lastAct , err = strconv.ParseInt(lastActStr , 10 , 64)
 	if err != nil {
-		log.Printf("Scheduler Watchdog: failed to parse last activity time: %v", err)
+		slog.Warn("Scheduler Watchdog: failed to parse last activity time", "error", err)
 		db.ForceCleanupJob(rdb)
 		return
 	}
 
 	if time.Now().Unix()-lastAct > idleTimeout {
-		log.Printf("Scheduler Watchdog: No activity for %d seconds. Forcibly cleaning up job.", time.Now().Unix()-lastAct)
+		slog.Info("Scheduler Watchdog: No activity. Forcibly cleaning up job.", "inactive_seconds", time.Now().Unix()-lastAct)
 		db.ForceCleanupJob(rdb)
 	}
 }

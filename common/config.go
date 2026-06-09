@@ -1,7 +1,7 @@
 package common
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -15,6 +15,9 @@ type Config struct {
 	RedisDB       int    `mapstructure:"REDIS_DB"`
 	RabbitMQURI   string `mapstructure:"RABBITMQ_URI"`
 	QueueName     string `mapstructure:"QUEUE_NAME"`
+	DropNextUrlRate     float32 `mapstructure:"DROP_NEXT_URL_RATE"`
+	TimeDelay	   int 			`mapstructure:"TIME_DELAY"`
+	JobTTL        int    `mapstructure:"TTL_JOB"`
 }
 
 var AppConfig Config
@@ -26,7 +29,9 @@ func InitConfig() error {
 	viper.SetDefault("REDIS_DB", 0)
 	viper.SetDefault("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/")
 	viper.SetDefault("QUEUE_NAME", "")
-
+	viper.SetDefault("DROP_NEXT_URL_RATE",0)
+	viper.SetDefault("TIME_DELAY",500)
+	viper.SetDefault("TTL_JOB", 1)
 	viper.SetConfigType("env")
 
 	// Walk up directories to find the .env file
@@ -53,12 +58,14 @@ func InitConfig() error {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
-		log.Printf("common/config: No .env file found. Falling back to system environment variables.")
+		slog.Info("No .env file found. Falling back to system environment variables.")
 	}
 
 	if err := viper.Unmarshal(&AppConfig); err != nil {
 		return err
 	}
+
+	slog.Info("Configuration loaded", "config", AppConfig)
 	return nil
 }
 

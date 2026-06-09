@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
@@ -35,7 +35,7 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 			// Check if a job is already running
 			active, err := db.IsJobActive(rdb)
 			if err != nil {
-				log.Printf("ERROR checking job active state: %v", err)
+				slog.Error("ERROR checking job active state", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check job state"})
 				return
 			}
@@ -46,7 +46,7 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 
 			started, err := db.StartJob(rdb, req.URL, req.Depth)
 			if err != nil {
-				log.Printf("ERROR starting job: %v", err)
+				slog.Error("ERROR starting job", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start job"})
 				return
 			}
@@ -55,19 +55,19 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 				return
 			}
 		} else {
-			log.Printf("Warning: Redis client is nil, running in bypass/test mode without locks")
+			slog.Warn("Redis client is nil, running in bypass/test mode without locks")
 		}
 
 		if ch != nil {
 			if rdb != nil {
 				_, err := cache.AddToBloom(rdb, req.URL)
 				if err != nil {
-					log.Printf("Warning: failed to add seed URL to bloom filter: %v", err)
+					slog.Warn("failed to add seed URL to bloom filter", "error", err)
 				}
 			}
 			err := broker.InsertMessage(ch, req.URL, 0, req.Depth)
 			if err != nil {
-				log.Printf("ERROR: failed to insert message to broker: %v", err)
+				slog.Error("failed to insert message to broker", "error", err)
 				if rdb != nil {
 					db.ForceCleanupJob(rdb)
 				}
@@ -75,7 +75,7 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 				return
 			}
 		} else {
-			log.Printf("Warning: RabbitMQ channel is nil, skipping publish for URL: %s", req.URL)
+			slog.Warn("RabbitMQ channel is nil, skipping publish", "url", req.URL)
 		}
 
 		c.String(http.StatusOK, "job started")

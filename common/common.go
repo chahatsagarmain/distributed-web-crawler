@@ -3,7 +3,7 @@ package common
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -39,7 +39,7 @@ func ConnectAll(cfg Config) (*Connections, error) {
 	if err := mongoClient.Ping(mongoCtx, nil); err != nil {
 		return nil, fmt.Errorf("failed to ping mongodb: %w", err)
 	}
-	log.Println("common: Successfully connected to MongoDB")
+	slog.Info("Successfully connected to MongoDB")
 
 	// 2. Connect to Redis
 	redisClient := redis.NewClient(&redis.Options{
@@ -54,7 +54,7 @@ func ConnectAll(cfg Config) (*Connections, error) {
 		mongoClient.Disconnect(context.Background())
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
-	log.Println("common: Successfully connected to Redis")
+	slog.Info("Successfully connected to Redis")
 
 	// 3. Connect to RabbitMQ
 	rabbitConn, err := amqp.Dial(cfg.RabbitMQURI)
@@ -71,7 +71,7 @@ func ConnectAll(cfg Config) (*Connections, error) {
 		rabbitConn.Close()
 		return nil, fmt.Errorf("failed to open rabbitmq channel: %w", err)
 	}
-	log.Println("common: Successfully connected to RabbitMQ")
+	slog.Info("Successfully connected to RabbitMQ")
 
 	return &Connections{
 		MongoClient: mongoClient,
@@ -99,17 +99,17 @@ func (c *Connections) Close() {
 	if c.MongoClient != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := c.MongoClient.Disconnect(ctx); err != nil {
-			log.Printf("common: Error closing MongoDB connection: %v\n", err)
+			slog.Error("Error closing MongoDB connection", "error", err)
 		} else {
-			log.Println("common: Closed MongoDB connection cleanly")
+			slog.Info("Closed MongoDB connection cleanly")
 		}
 		cancel()
 	}
 	if c.RedisClient != nil {
 		if err := c.RedisClient.Close(); err != nil {
-			log.Printf("common: Error closing Redis connection: %v\n", err)
+			slog.Error("Error closing Redis connection", "error", err)
 		} else {
-			log.Println("common: Closed Redis connection cleanly")
+			slog.Info("Closed Redis connection cleanly")
 		}
 	}
 	if c.RabbitMQ != nil {
@@ -119,6 +119,6 @@ func (c *Connections) Close() {
 		if c.RabbitMQ.Conn != nil {
 			c.RabbitMQ.Conn.Close()
 		}
-		log.Println("common: Closed RabbitMQ connection cleanly")
+		slog.Info("Closed RabbitMQ connection cleanly")
 	}
 }
