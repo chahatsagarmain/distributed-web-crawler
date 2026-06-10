@@ -21,10 +21,12 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: 'stable'
+                  go-version-file: 'go.work'
 
             - name: Run Go tests
-              run: go test ./worker/... ./common/... ./scheduler/...
+              run: |
+                go work sync
+                go test ./...
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
