@@ -13,6 +13,7 @@ import (
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
+	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/metrics"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 )
@@ -136,9 +137,11 @@ func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) 
 		},
 	)
 	if err != nil {
+		metrics.SchedulingErrorsTotal.Inc()
 		return fmt.Errorf("failed to publish message to consistent hashing exchange: %w", err)
 	}
 
+	metrics.URLsQueuedTotal.Inc()
 	slog.Info("Published message to consistent hashing exchange", "url", urlStr, "currentDepth", currentDepth, "maxDepth", maxDepth)
 	return nil
 }

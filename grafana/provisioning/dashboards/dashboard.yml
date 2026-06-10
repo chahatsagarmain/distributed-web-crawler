@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Crawler Dashboards'
+    orgId: 1
+    folder: 'Crawler'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

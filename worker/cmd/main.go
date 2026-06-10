@@ -6,9 +6,17 @@ import (
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/broker"
+	"net/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		if err := http.ListenAndServe(":8081", nil); err != nil {
+			slog.Error("Metrics server failed", "error", err)
+		}
+	}()
 	err := common.InitConfig()
 	if err != nil {
 		slog.Error("Worker ERROR: initializing configuration failed", "error", err)

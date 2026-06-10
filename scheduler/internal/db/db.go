@@ -50,6 +50,7 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 			size := len(b.data)
 			var documents []interface{}
 			for _, val := range b.data {
+				val.NextUrls = nil
 				documents = append(documents, val)
 			}
 			b.data = b.data[:0]
@@ -71,6 +72,7 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 			var documents []interface{}
 			if len(b.data) >= BatchSize {
 				for _, val := range b.data {
+					val.NextUrls = nil
 					documents = append(documents, val)
 				}
 				b.data = b.data[:0]

@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
@@ -12,6 +13,8 @@ func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
 
 	handleCrawl := handlers.MakeHandleCrawl(ch, rdb)
 	r.POST("/crawl", handleCrawl)
+	
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	return r
 }

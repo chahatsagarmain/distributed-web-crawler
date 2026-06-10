@@ -10,7 +10,9 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/PuerkitoBio/purell"
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
+	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/metrics"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/robots"
+	"strconv"
 )
 
 type Crawler struct {
@@ -50,25 +52,36 @@ func NormalizeURL(rawURL string) (string, error) {
 }
 
 func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
+	start := time.Now()
+	status := "success"
+	defer func() {
+		metrics.PageProcessingDuration.Observe(time.Since(start).Seconds())
+		metrics.PagesProcessedTotal.WithLabelValues(status).Inc()
+	}()
+
 	parsedUrl, err := urlParser.Parse(rawUrl)
 	if err != nil {
+		status = "failure"
 		slog.Error("parsing url", "url", rawUrl, "error", err)
 		return common.UrlData{}, err
 	}
 	url := parsedUrl.String()
 	url, err = NormalizeURL(url)
 	if err != nil {
+		status = "failure"
 		slog.Error("url can't be normalized", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	// Check robots.txt restrictions before crawling
 	allowed, err := c.RobotCheck.IsAllowed(url)
 	if err != nil {
+		status = "failure"
 		slog.Error("checking robots.txt", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	if !allowed {
 		slog.Info("URL is disallowed by robots.txt", "url", url)
+		status = "failure"
 		return common.UrlData{
 			Url:       url,
 			HasRobots: true,
@@ -76,6 +89,7 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		status = "failure"
 		slog.Error("creating request", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
@@ -85,20 +99,25 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 	client := c.Client
 	resp, err := client.Do(req)
 	if err != nil {
+		status = "failure"
 		slog.Error("sending request", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
+	metrics.HTTPStatusCodesTotal.WithLabelValues(strconv.Itoa(resp.StatusCode), parsedUrl.Host).Inc()
 	defer resp.Body.Close()
 	htmlDocument, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
+		status = "failure"
 		slog.Error("reading html", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
 	rawHtml, err := goquery.OuterHtml(htmlDocument.Selection)
 	if err != nil {
+		status = "failure"
 		slog.Error("reading html", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
+	metrics.BytesDownloadedTotal.Add(float64(len(rawHtml)))
 
 	var nextUrls []string
 	htmlDocument.Find("a").Each(func(index int, item *goquery.Selection) {
