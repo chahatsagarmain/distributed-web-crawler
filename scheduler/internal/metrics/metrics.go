@@ -16,8 +16,4 @@ var (
 		Help: "The total number of errors encountered while scheduling",
 	})
 
-	ActiveDomains = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "crawler_active_domains",
-		Help: "The number of unique domains currently being tracked/crawled",
-	})
 )
