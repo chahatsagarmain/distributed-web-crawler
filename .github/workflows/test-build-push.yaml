@@ -26,7 +26,7 @@ jobs:
             - name: Run Go tests
               run: |
                 go work sync
-                go test ./...
+                go test ./worker/... ./common/... ./scheduler/...
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
