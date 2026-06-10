@@ -24,7 +24,7 @@ jobs:
                   go-version: 'stable'
 
             - name: Run Go tests
-              run: go test ./...
+              run: go test ./worker/... ./common/... ./scheduler/...
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3

@@ -30,8 +30,8 @@ func InitConfig() error {
 	viper.SetDefault("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/")
 	viper.SetDefault("QUEUE_NAME", "")
 	viper.SetDefault("DROP_NEXT_URL_RATE",0)
-	viper.SetDefault("TIME_DELAY",500)
-	viper.SetDefault("TTL_JOB", 1)
+	viper.SetDefault("TIME_DELAY",3000)
+	viper.SetDefault("TTL_JOB", 12)
 	viper.SetConfigType("env")
 
 	// Walk up directories to find the .env file
