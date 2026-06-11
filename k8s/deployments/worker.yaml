@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app: worker
+  namespace: crawler
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker-container
+        image: chahatsagarmain/worker:main 
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: crawler-env
+        resources:
+          limits:
+            cpu: "2"
+            memory: "1Gi"
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20 
+        
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20 
+

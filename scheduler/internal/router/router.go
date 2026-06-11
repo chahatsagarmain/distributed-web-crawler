@@ -16,5 +16,7 @@ func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
 	
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	r.GET("/ping" , handlers.PingHandlerFunc())
+
 	return r
 }

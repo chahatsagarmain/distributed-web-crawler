@@ -1,0 +1,18 @@
+# default env if needed 
+# if you have custom env file then use ------ kubectl create configmap crawler-env --from-env-file=.env -n crawler  
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crawler-env
+  namespace: crawler
+
+data:
+  MONGO_URI: "mongodb://admin:password@mongodb:27017"
+  REDIS_ADDR: "redis-stack:6379"
+  REDIS_PASSWORD: ""
+  REDIS_DB: "0"
+  RABBITMQ_URI: "amqp://guest:guest@rabbitmq:5672/"
+  TIME_DELAY: "3000"
+  TTL_JOB: "12"
+

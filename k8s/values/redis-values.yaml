@@ -1,0 +1,11 @@
+image:
+  registry: docker.io
+  repository: redis/redis-stack-server
+  tag: latest 
+
+global:
+  security:
+    allowInsecureImages: true
+
+# redisConfig: |
+#   loadmodule /opt/redis-stack/lib/redisbloom.so

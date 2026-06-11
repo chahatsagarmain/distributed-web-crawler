@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/bloom"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/broker"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
@@ -15,6 +17,22 @@ import (
 type CrawlRequest struct {
 	URL   string `json:"url" form:"url" binding:"required"`
 	Depth int    `json:"depth" form:"depth"`
+}
+
+func PingHandlerFunc() gin.HandlerFunc {
+	return func (c *gin.Context)  {
+		conn , err := common.ConnectAll(common.AppConfig)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError , gin.H{"error" : fmt.Sprintf("cant connect to services : %v" , err.Error())})
+			return
+		}
+		err = conn.Ping()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError , gin.H{"error" : fmt.Sprintf("cant pint to services : %v" , err.Error())})
+			return
+		}
+		c.JSON(http.StatusOK , gin.H{"message" : "pinged"})
+	}
 }
 
 // MakeHandleCrawl returns a gin.HandlerFunc that has access to the RabbitMQ channel and Redis client.

@@ -2,18 +2,23 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/broker"
-	"net/http"
+	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+var Conn *common.Connections
+
 func main() {
-	http.Handle("/metrics", promhttp.Handler())
+	g := gin.New()
+	g.GET("/metrics" , gin.WrapH(promhttp.Handler()))
+	g.GET("/ping" , PingHandler)
 	go func() {
-		if err := http.ListenAndServe(":8081", nil); err != nil {
+		if err := g.Run(":8081"); err != nil {
 			slog.Error("Metrics server failed", "error", err)
 		}
 	}()
@@ -23,17 +28,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	conn, err := common.ConnectAll(common.AppConfig)
+	Conn, err = common.ConnectAll(common.AppConfig)
 	if err != nil {
 		slog.Error("Worker ERROR: failed to connect to database or message broker", "error", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer Conn.Close()
 
 	slog.Info("Worker: Connected successfully, starting consumers...")
-	err = broker.StartConsumers(conn, common.AppConfig.QueueName)
+	err = broker.StartConsumers(Conn, common.AppConfig.QueueName)
 	if err != nil {
 		slog.Error("Worker ERROR: consumers failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func PingHandler(c *gin.Context)  {
+	if err := Conn.Ping() ; err != nil {
+		c.JSON(http.StatusInternalServerError , gin.H{"body" : "error pinging services"})
+		return
+	}
+
+	c.JSON(http.StatusOK , gin.H{"body" : "PINGED!!!"})
 }

@@ -1,0 +1,41 @@
+architecture: standalone
+
+auth:
+  enabled: true
+  rootUser: admin
+  rootPassword: "password"
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+
+resources:
+  requests:
+    cpu: 300m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 4Gi
+
+# metrics:
+#   enabled: true
+#   serviceMonitor:
+#     enabled: true
+#     namespace: monitoring
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 20
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 20
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9216"
