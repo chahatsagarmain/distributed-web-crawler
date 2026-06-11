@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: crawler-service-monitor
+  namespace: crawler # Can be deployed in the application namespace
+  labels:
+    release: prometheus # If serviceMonitorSelectorNilUsesHelmValues is true, this label must match the Helm release name
+spec:
+  # Defines which namespaces to search for the endpoints
+  namespaceSelector:
+    matchNames:
+      - crawler
+  # Selects the Services based on the shared label we just added
+  selector:
+    matchLabels:
+      monitor: enabled
+  # Defines the target port and scraping interval
+  endpoints:
+    - port: metrics # Matches the port name defined in BOTH Services
+      interval: 15s
+      path: /metrics

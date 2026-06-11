@@ -1,0 +1,53 @@
+# Helm values for prometheus-community/prometheus
+
+prometheus:
+  prometheusSpec:
+    # Allows Prometheus to find ServiceMonitors outside its own Helm release/namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    # Allows Prometheus to search all namespaces for ServiceMonitors
+    serviceMonitorNamespaceSelector: {}
+
+server:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+
+  # Persistent storage for Prometheus time-series data
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  retention: 15d
+
+# By default, this Helm chart will automatically scrape any pods that have the 
+# prometheus.io/scrape: "true" annotation. 
+# However, to perfectly mirror your docker-compose prometheus.yml, we can 
+# explicitly define your custom scrape jobs here:
+extraScrapeConfigs: |
+  - job_name: 'scheduler'
+    static_configs:
+      - targets: ['scheduler-svc.crawler.svc.cluster.local:8080']
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      # The RabbitMQ prometheus plugin exposes metrics on 15692 by default
+      - targets: ['rabbitmq.crawler.svc.cluster.local:15692']
+
+alertmanager:
+  # Disable alertmanager to save resources for local development
+  enabled: false
+
+pushgateway:
+  # Disable pushgateway as the crawler uses standard pull metrics
+  enabled: false
+
+grafana:
+  adminPassword: "admin"
+
+kube-state-metrics:
+  enabled: true
+
+nodeExporter:
+  enabled: false
