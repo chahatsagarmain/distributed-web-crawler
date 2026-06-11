@@ -236,6 +236,19 @@ The **Worker** is stateless and scales horizontally. It pulls URLs from RabbitMQ
 *   **Unified Connection Manager ([common.go](file:///D:/distributed-crawler/distributed-web-crawler/common/common.go))**: Centralizes configuration, initialization, connection pooling, and cleanup logic for MongoDB, Redis, and RabbitMQ.
 *   **Viper Configuration ([config.go](file:///D:/distributed-crawler/distributed-web-crawler/common/config.go))**: Loads environment variables with defaults. It recursively searches parent directories to locate a `.env` file, enabling the application to find configuration files regardless of the directory from which it is executed.
 
+### 4. Stateful Infrastructure Layer (Databases & Broker)
+The state and messaging layer of the crawler is composed of MongoDB, Redis, and RabbitMQ.
+*   **Helm-Driven Deployment**: Rather than maintaining custom manifests, these services are deployed via industry-standard Helm charts:
+    *   **MongoDB**: Deployed using the Bitnami Helm chart configured via [mongodb-values.yaml](file:///D:/distributed-crawler/distributed-web-crawler/k8s/values/mongodb-values.yaml).
+    *   **RabbitMQ**: Deployed using the RabbitMQ Helm chart configured via [rabbitmq-values.yaml](file:///D:/distributed-crawler/distributed-web-crawler/k8s/values/rabbitmq-values.yaml), which handles plugin setups at startup.
+    *   **Redis**: Deployed using the `redis-stack` Helm chart configured via [redis-values.yaml](file:///D:/distributed-crawler/distributed-web-crawler/k8s/values/redis-values.yaml) to run `redis-stack-server` with `RedisBloom` modules.
+*   **Standalone Mode (Development)**: In the local deployment and dev configurations, these services are configured as standalone, single-instance pods to save memory and CPU resources.
+*   **Seamless Scaling (Production)**: Thanks to packaging the stateful components inside Helm charts, they can be scaled to production grade with simple configuration overrides:
+    *   **MongoDB**: Transition from standalone to a multi-replica set configuration with write concern adjustments.
+    *   **RabbitMQ**: Scale up to a multi-node cluster by adjusting the chart's node replica counts and enabling queue mirroring.
+    *   **Redis**: Migrate to high-availability configurations like Redis Sentinel or a Redis Cluster.
+    No application code modifications are required in the Scheduler or Worker modules to adopt these cluster schemas; they simply require pointing to the updated cluster connection strings.
+
 ---
 
 ## 📡 API Reference
