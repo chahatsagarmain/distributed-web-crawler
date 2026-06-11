@@ -2,6 +2,9 @@
 
 A highly scalable, concurrent, and distributed web crawling engine written in Go. This system is designed to traverse the web rapidly, extract data, respect site boundaries (`robots.txt`), and handle massive backlogs of URLs by utilizing a microservice architecture communicating over a message broker (RabbitMQ).
 
+> [!NOTE]
+> To deploy and run the crawler using Kubernetes (K8s), please refer to the dedicated [Kubernetes Deployment Guide (k8s/README.md)](file:///D:/distributed-crawler/distributed-web-crawler/k8s/README.md).
+
 ---
 
 ## 🏗️ System Architecture & Sequence Flow
@@ -232,6 +235,123 @@ The **Worker** is stateless and scales horizontally. It pulls URLs from RabbitMQ
 ### 3. Common Package (Shared Layer)
 *   **Unified Connection Manager ([common.go](file:///D:/distributed-crawler/distributed-web-crawler/common/common.go))**: Centralizes configuration, initialization, connection pooling, and cleanup logic for MongoDB, Redis, and RabbitMQ.
 *   **Viper Configuration ([config.go](file:///D:/distributed-crawler/distributed-web-crawler/common/config.go))**: Loads environment variables with defaults. It recursively searches parent directories to locate a `.env` file, enabling the application to find configuration files regardless of the directory from which it is executed.
+
+---
+
+## 📡 API Reference
+
+The Scheduler exposes the following HTTP endpoints on port `8080`:
+
+### 1. Start Crawl Job (`POST /crawl`)
+Starts a new, asynchronous crawling process starting from the specified seed URL.
+
+*   **Content-Type**: `application/json`
+*   **Request Body Schema**:
+    ```json
+    {
+      "url": "string",
+      "depth": "integer"
+    }
+    ```
+    *   `url` (string, **required**): The absolute HTTP/HTTPS URL of the seed page.
+    *   `depth` (integer, optional): The maximum traversal depth limit. A depth of `0` scrapes only the seed page.
+*   **Example Payload**:
+    ```json
+    {
+      "url": "https://example.com",
+      "depth": 2
+    }
+    ```
+*   **Response Codes**:
+    *   `200 OK`: The seed URL has been successfully locked, registered in the Bloom Filter, and published. Returns text: `"job started"`.
+    *   `400 Bad Request`: The request payload is malformed or the `url` parameter is missing.
+    *   `429 Too Many Requests`: Another crawling job is already running in the cluster.
+    *   `500 Internal Server Error`: Failed to communicate with Redis/RabbitMQ.
+
+### 2. Stop Crawl Job (`POST /stop`)
+Forcefully cancels the running job by purging all queue backlogs and removing database state locks.
+
+*   **Request Body**: None (Empty body)
+*   **Response Codes**:
+    *   `200 OK`: The active job state was released and all queues successfully flushed.
+    *   `400 Bad Request`: No active crawl job was currently running.
+    *   `500 Internal Server Error`: Failed to clear active flags in Redis or purge RabbitMQ.
+
+### 3. Service Health Check (`GET /ping`)
+Triggers connection checks to the MongoDB, Redis, and RabbitMQ state layers.
+
+*   **Response Codes**:
+    *   `200 OK`: All system connections are healthy. Returns JSON: `{"message": "pinged"}`.
+    *   `500 Internal Server Error`: One or more underlying datastores are unreachable.
+
+### 4. Metrics Export (`GET /metrics`)
+Exposes system-level Prometheus metrics.
+
+---
+
+## 🧪 Step-by-Step Workflow
+
+Follow this workflow to trigger a crawl and query the resulting database records.
+
+### Step 1: Start the services
+Ensure all containers are running and healthy:
+```bash
+docker compose up -d
+```
+
+### Step 2: Trigger a Crawl Request
+Submit a crawl job starting at `https://example.com` up to a maximum depth of `1`:
+```bash
+curl -X POST http://localhost:8080/crawl \
+     -H "Content-Type: application/json" \
+     -d '{"url":"https://example.com","depth":1}'
+```
+You should receive a `200 OK` response with the body: `job started`.
+
+### Step 3: Inspect Logs
+Monitor the workers to see tasks being consumed from RabbitMQ and pages being processed:
+```bash
+docker compose logs -f worker
+```
+Wait a few seconds for the Scheduler's database batcher (flushes every 5 seconds or 100 documents) to commit the results.
+
+### Step 4: Query MongoDB
+Access the running MongoDB container to inspect the crawled documents in the database:
+```bash
+# Connect and list crawled URLs and their depths
+docker exec -it mongodb mongosh -u admin -p password --eval "use url_db; db.crawled_urls.find({}, {url: 1, depth: 1, has_robots: 1}).pretty()"
+```
+This should output the crawled documents:
+```json
+[
+  {
+    "_id": {"$oid": "6668db86df935c102beab91a"},
+    "url": "https://example.com",
+    "depth": 0,
+    "has_robots": false
+  },
+  {
+    "_id": {"$oid": "6668db8bdf935c102beab91b"},
+    "url": "https://example.com/about",
+    "depth": 1,
+    "has_robots": false
+  }
+]
+```
+
+To fetch the raw scraped HTML content of a specific page, run:
+```bash
+docker exec -it mongodb mongosh -u admin -p password --eval "use url_db; db.crawled_urls.find({url: 'https://example.com'}, {raw_html: 1}).pretty()"
+```
+
+### Step 5: Visual Verification via MongoDB Compass (GUI)
+If you prefer a graphical user interface instead of querying the terminal:
+1. Open **MongoDB Compass**.
+2. Connect using the connection string:
+   ```text
+   mongodb://admin:password@localhost:27017/?authSource=admin
+   ```
+3. Once connected, select the **`url_db`** database and the **`crawled_urls`** collection to browse, search, and view crawled web pages and raw HTML.
 
 ---
 
