@@ -1,3 +1,5 @@
+# helm install mongodb bitnami/mongodb -f k8s/values/mongodb-values.yaml -n crawler     
+
 architecture: standalone
 
 auth:

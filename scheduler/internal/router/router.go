@@ -13,6 +13,9 @@ func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
 
 	handleCrawl := handlers.MakeHandleCrawl(ch, rdb)
 	r.POST("/crawl", handleCrawl)
+
+	handleStop := handlers.MakeHandleStop(ch, rdb)
+	r.POST("/stop", handleStop)
 	
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 

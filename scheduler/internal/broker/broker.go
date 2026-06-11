@@ -307,3 +307,22 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 		db.ForceCleanupJob(rdb)
 	}
 }
+
+// PurgeQueues forcefully purges all worker queues and the result queue
+func PurgeQueues(ch *amqp.Channel) error {
+	for _, qName := range Queues {
+		_, err := ch.QueuePurge(qName, false)
+		if err != nil {
+			return fmt.Errorf("failed to purge queue %s: %w", qName, err)
+		}
+		slog.Info("Purged queue", "queue", qName)
+	}
+
+	_, err := ch.QueuePurge(ResultQueue, false)
+	if err != nil {
+		return fmt.Errorf("failed to purge result queue: %w", err)
+	}
+	slog.Info("Purged result queue", "queue", ResultQueue)
+
+	return nil
+}
