@@ -1,6 +1,6 @@
 # Distributed Web Crawler
 
-A highly scalable, concurrent, and distributed web crawling engine written in Go. This system is designed to traverse the web rapidly, extract data, respect site boundaries (`robots.txt`), and handle massive backlogs of URLs by utilizing a microservice architecture communicating over a message broker (RabbitMQ).
+A highly scalable, concurrent, and distributed web crawling engine written in Go that can scale to scrape Millions of URLs kubernetes. This system is designed to traverse the web rapidly, extract data, respect site boundaries (`robots.txt`), and handle massive backlogs of URLs by utilizing a microservice architecture communicating over a message broker (RabbitMQ).
 
 > [!NOTE]
 > To deploy and run the crawler using Kubernetes (K8s), please refer to the dedicated [Kubernetes Deployment Guide (k8s/README.md)](file:///D:/distributed-crawler/distributed-web-crawler/k8s/README.md).
@@ -8,6 +8,12 @@ A highly scalable, concurrent, and distributed web crawling engine written in Go
 ---
 
 ## 🏗️ System Architecture & Sequence Flow
+
+> System architecture for kubernetes deployment , similar setup is deployed with docker compse .
+> ELK stack was not added due to compute constraints in my local setup but might be added in future PRs . 
+
+<img width="4013" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/2aa8ea81-1739-47ea-8da0-8bf00e219c78" />
+
 
 The crawler employs a master-worker (Scheduler-Worker) architecture to ensure horizontal scalability, fault tolerance, and data ingestion reliability.
 
@@ -370,7 +376,7 @@ If you prefer a graphical user interface instead of querying the terminal:
 
 ## 🔀 Queue Topology & Consistent Hashing
 
-Standard load balancing (like round-robin) distributes URLs across workers arbitrarily. This reduces `robots.txt` cache hit rates, as different workers keep fetching the same domain, forcing them to fetch `robots.txt` repeatedly.
+Standard load balancing (like round-robin) distributes URLs across workers arbitrarily. This affects local cache hit rates but , ensures even crawling of urls due to consistent hashing . 
 
 To address this, we configure RabbitMQ with the **Consistent Hashing Exchange** plugin (`x-consistent-hash`):
 
