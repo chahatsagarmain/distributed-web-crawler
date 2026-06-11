@@ -9,6 +9,12 @@ A highly scalable, concurrent, and distributed web crawling engine written in Go
 
 ## 🏗️ System Architecture & Sequence Flow
 
+> System architecture for kubernetes deployment , similar setup is deployed with docker compse .
+> ELK stack was not added due to compute constraints in my local setup but might be added in future PRs . 
+
+<img width="4013" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/2aa8ea81-1739-47ea-8da0-8bf00e219c78" />
+
+
 The crawler employs a master-worker (Scheduler-Worker) architecture to ensure horizontal scalability, fault tolerance, and data ingestion reliability.
 
 ```mermaid
