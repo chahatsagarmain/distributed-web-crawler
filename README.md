@@ -471,7 +471,10 @@ docker compose down -v
 
 For robust, production-grade deployments, the system is fully configured for Kubernetes. We utilize Helm charts for the complex stateful databases (MongoDB, RabbitMQ, Redis) and native Kubernetes objects for the microservices.
 
-A dedicated and highly detailed guide for deploying, operating, and configuring the Kubernetes environment is located in the `k8s` directory.
+A dedicated and highly detailed guide for deploying, operating, and configuring the Kubernetes environment is located in the `k8s` directory. You can deploy the entire stack automatically using the new script:
+```bash
+./k8s/deploy.sh
+```
 
 👉 **[Read the Kubernetes Deployment Guide here.](file:///D:/distributed-crawler/distributed-web-crawler/k8s/README.md)**
 

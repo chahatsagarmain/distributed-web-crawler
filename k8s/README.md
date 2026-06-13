@@ -40,7 +40,12 @@ Instead of manually maintaining complex stateful sets, we use industry-standard 
 
 ## 🚀 Deployment Order & Instructions
 
-To ensure all dependencies are met, resources must be applied in a specific order. Ensure you have `kubectl` and `helm` installed.
+To deploy the entire stack automatically, you can run the provided bash script:
+```bash
+./k8s/deploy.sh
+```
+
+Alternatively, to manually apply the resources in the specific order required to meet all dependencies, follow the steps below. Ensure you have `kubectl` and `helm` installed.
 
 ### Step 1: Base Environment
 Create the namespace and inject the central configuration map first.
@@ -83,8 +88,17 @@ Deploy Prometheus to monitor the queue depths, scraping speeds, and pod health.
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
+# Pre-install Prometheus Operator CRDs (required to avoid schema errors)
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_alertmanagers.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheuses.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_thanosrulers.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_probes.yaml
+
 # Install Prometheus
-helm install prometheus prometheus-community/prometheus -f k8s/values/prometheus-values.yaml -n crawler
+helm install prometheus prometheus-community/kube-prometheus-stack -f k8s/values/prometheus-values.yaml -n crawler
 
 # Apply the dynamic ServiceMonitor
 kubectl apply -f k8s/service-monitor/service-monitor.yaml

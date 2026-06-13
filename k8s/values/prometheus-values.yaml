@@ -1,4 +1,4 @@
-# Helm values for prometheus-community/prometheus
+# Helm values for prometheus-community/kube-prometheus-stack
 
 prometheus:
   prometheusSpec:
