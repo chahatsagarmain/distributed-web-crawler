@@ -2,6 +2,8 @@
 
 A highly scalable, concurrent, and distributed web crawling engine written in Go that can scale to scrape Millions of URLs kubernetes. This system is designed to traverse the web rapidly, extract data, respect site boundaries (`robots.txt`), and handle massive backlogs of URLs by utilizing a microservice architecture communicating over a message broker (RabbitMQ).
 
+-> Read the blog here : [link](https://medium.com/@chahatsagar2003/handling-millions-of-urls-designing-and-implementing-a-highly-concurrent-distributed-web-crawler-0890357fcfce)
+
 > [!NOTE]
 > To deploy and run the crawler using Kubernetes (K8s), please refer to the dedicated [Kubernetes Deployment Guide (k8s/README.md)](file:///D:/distributed-crawler/distributed-web-crawler/k8s/README.md).
 
