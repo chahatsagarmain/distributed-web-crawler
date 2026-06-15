@@ -2,7 +2,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: crawler-service-monitor
-  namespace: crawler # Can be deployed in the application namespace
+  namespace: monitoring # Deployed in the monitoring namespace
   labels:
     release: prometheus # If serviceMonitorSelectorNilUsesHelmValues is true, this label must match the Helm release name
 spec:

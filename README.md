@@ -376,15 +376,13 @@ If you prefer a graphical user interface instead of querying the terminal:
 
 ## 🔀 Queue Topology & Consistent Hashing
 
-Standard load balancing (like round-robin) distributes URLs across workers arbitrarily. This affects local cache hit rates but , ensures even crawling of urls due to consistent hashing . 
-
-To address this, we configure RabbitMQ with the **Consistent Hashing Exchange** plugin (`x-consistent-hash`):
+Standard load balancing (like round-robin) distributes URLs across workers arbitrarily. To distribute the crawl load evenly and deterministically, we configure RabbitMQ with the **Consistent Hashing Exchange** plugin (`x-consistent-hash`):
 
 1.  The Scheduler declares a consistent hashing exchange named `consistent_hashing`.
 2.  Three queues (`queue_1`, `queue_2`, `queue_3`) are bound to this exchange with a weight routing key of `"1"`.
-3.  When publishing, the Scheduler sets the target **URL string** (e.g., `https://example.com/page-1`) as the routing key.
+3.  When publishing, the Scheduler sets the target **full URL string** (e.g., `https://example.com/page-1`) as the routing key.
 4.  RabbitMQ hashes the routing key and routes the message to the corresponding queue.
-5.  Because URLs from the same domain hash to the same queue, a single worker (consuming from that queue) processes all URLs for that domain. This maximizes memory cache hits for `robots.txt` and DNS lookups.
+5.  Since the entire URL string (including the path) is used as the routing key, different URLs on the same domain may hash to different queues and be processed by different workers. This distributes the crawl load across all workers even when crawling a single domain. This ensures that new websites and links are explored in parallel across multiple workers, but comes at the cost of cache locality (e.g., `robots.txt` cache hits and DNS lookups are not domain-isolated to a single worker).
 
 ---
 

@@ -98,10 +98,10 @@ for url in "${CRD_URLS[@]}"; do
   kubectl apply --server-side -f "$url"
 done
 
-echo -e "${BLUE}[*] Deploying Prometheus (kube-prometheus-stack)...${NC}"
+echo -e "${BLUE}[*] Deploying Prometheus (kube-prometheus-stack) in monitoring namespace...${NC}"
 helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   -f k8s/values/prometheus-values.yaml \
-  -n crawler
+  -n monitoring --create-namespace
 
 echo -e "${BLUE}[*] Applying ServiceMonitor...${NC}"
 kubectl apply -f k8s/service-monitor/service-monitor.yaml
@@ -117,4 +117,10 @@ echo -e "   kubectl port-forward svc/scheduler-svc 8080:8080 -n crawler"
 echo -e "${YELLOW}2. Trigger a crawl job (in another terminal):${NC}"
 echo -e "   curl -X POST http://localhost:8080/crawl -H \"Content-Type: application/json\" -d '{\"url\":\"https://example.com\",\"depth\":2}'"
 echo -e "${YELLOW}3. Port-forward Prometheus (optional):${NC}"
-echo -e "   kubectl port-forward svc/prometheus-server 9090:80 -n crawler"
+echo -e "   kubectl port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 -n monitoring"
+echo -e "${YELLOW}4. Port-forward Grafana (optional, admin/admin):${NC}"
+echo -e "   kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring"
+echo -e "${YELLOW}5. Port-forward MongoDB (optional):${NC}"
+echo -e "   kubectl port-forward svc/mongodb 27017:27017 -n crawler"
+echo -e "${YELLOW}6. Port-forward RabbitMQ Management UI (optional, guest/guest):${NC}"
+echo -e "   kubectl port-forward svc/rabbitmq 15672:15672 -n crawler"

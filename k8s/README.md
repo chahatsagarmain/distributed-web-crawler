@@ -98,7 +98,7 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-oper
 kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_probes.yaml
 
 # Install Prometheus
-helm install prometheus prometheus-community/kube-prometheus-stack -f k8s/values/prometheus-values.yaml -n crawler
+helm install prometheus prometheus-community/kube-prometheus-stack -f k8s/values/prometheus-values.yaml -n monitoring --create-namespace
 
 # Apply the dynamic ServiceMonitor
 kubectl apply -f k8s/service-monitor/service-monitor.yaml
@@ -128,6 +128,19 @@ curl -X POST http://localhost:8080/stop
 **Viewing Metrics:**
 ```bash
 # Open a tunnel to the Prometheus server
-kubectl port-forward svc/prometheus-server 9090:80 -n crawler
+kubectl port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 -n monitoring
+
+# Open a tunnel to Grafana (Default: admin / admin)
+kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring
 ```
-*Navigate to `http://localhost:9090` in your browser to view the live dashboard and metrics targets.*
+*Navigate to `http://localhost:9090` in your browser to view the live dashboard and metrics targets. Navigate to `http://localhost:3000` to view Grafana dashboards.*
+
+**Accessing Database and Broker (Optional):**
+```bash
+# Open a tunnel to MongoDB
+kubectl port-forward svc/mongodb 27017:27017 -n crawler
+
+# Open a tunnel to RabbitMQ Management UI (Default: guest / guest)
+kubectl port-forward svc/rabbitmq 15672:15672 -n crawler
+```
+*Connect to MongoDB at `mongodb://admin:password@localhost:27017/?authSource=admin`. Open `http://localhost:15672` in your browser to view the RabbitMQ management dashboard.*

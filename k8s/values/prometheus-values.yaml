@@ -1,5 +1,8 @@
 # Helm values for prometheus-community/kube-prometheus-stack
 
+crds:
+  enabled: false
+
 prometheus:
   prometheusSpec:
     # Allows Prometheus to find ServiceMonitors outside its own Helm release/namespace
