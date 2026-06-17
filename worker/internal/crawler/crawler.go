@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 type Crawler struct {
 	Client     *http.Client
 	RobotCheck *robots.RobotChecker
+	Politeness *PolitenessManager
 }
 
 func NewCrawler() *Crawler {
@@ -33,6 +35,7 @@ func NewCrawler() *Crawler {
 			Timeout:   10 * time.Second,
 		},
 		RobotCheck: robots.NewRobotChecker(),
+		Politeness: NewPolitenessManager(context.Background()),
 	}
 }
 
@@ -72,7 +75,20 @@ func (c *Crawler) CrawlUrl(rawUrl string, depth int) (common.UrlData, error) {
 		slog.Error("url can't be normalized", "url", url, "error", err)
 		return common.UrlData{}, err
 	}
-	// Check robots.txt restrictions before crawling
+
+	// Determine politeness delay
+	delay, err := c.RobotCheck.GetCrawlDelay(url)
+	if err != nil || delay <= 0 {
+		delay = time.Duration(common.AppConfig.DefaultPolitenessDelay) * time.Millisecond
+	}
+
+	err = c.Politeness.Enforce(context.Background(), parsedUrl.Host, delay)
+	if err != nil {
+		status = "failure"
+		slog.Error("politeness enforcement failed", "host", parsedUrl.Host, "error", err)
+		return common.UrlData{}, err
+	}
+
 	allowed, err := c.RobotCheck.IsAllowed(url)
 	if err != nil {
 		status = "failure"

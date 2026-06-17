@@ -102,3 +102,37 @@ func (rc *RobotChecker) IsAllowed(targetURL string) (bool, error) {
 	}
 	return robotsGroup.Test(parsedURL.Path), nil
 }
+
+// GetCrawlDelay returns the parsed crawl delay for a given URL, or 0 if not specified.
+func (rc *RobotChecker) GetCrawlDelay(targetURL string) (time.Duration, error) {
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse target URL: %w", err)
+	}
+
+	host := parsedURL.Host
+	if host == "" {
+		return 0, fmt.Errorf("empty host in URL: %s", targetURL)
+	}
+
+	// Check cache first
+	rc.cacheMu.RLock()
+	group, cached := rc.cache[host]
+	rc.cacheMu.RUnlock()
+
+	// If not cached, fetch robots.txt first to populate the cache
+	if !cached {
+		_, err = rc.IsAllowed(targetURL)
+		if err != nil {
+			return 0, err
+		}
+		rc.cacheMu.RLock()
+		group = rc.cache[host]
+		rc.cacheMu.RUnlock()
+	}
+
+	if group == nil {
+		return 0, nil
+	}
+	return group.CrawlDelay, nil
+}

@@ -18,6 +18,7 @@ type Config struct {
 	DropNextUrlRate     float32 `mapstructure:"DROP_NEXT_URL_RATE"`
 	TimeDelay	   int 			`mapstructure:"TIME_DELAY"`
 	JobTTL        int    `mapstructure:"TTL_JOB"`
+	DefaultPolitenessDelay int `mapstructure:"DEFAULT_POLITENESS_DELAY"`
 }
 
 var AppConfig Config
@@ -32,6 +33,7 @@ func InitConfig() error {
 	viper.SetDefault("DROP_NEXT_URL_RATE",0)
 	viper.SetDefault("TIME_DELAY",3000)
 	viper.SetDefault("TTL_JOB", 12)
+	viper.SetDefault("DEFAULT_POLITENESS_DELAY", 3000)
 	viper.SetConfigType("env")
 
 	// Walk up directories to find the .env file
