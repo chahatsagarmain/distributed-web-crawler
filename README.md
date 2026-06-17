@@ -16,6 +16,7 @@ To make this repository clean and maintainable, detailed topics have been moved 
 *   👉 **[Architecture Guide (ARCHITECTURE.md)](file:///D:/distributed-crawler/distributed-web-crawler/ARCHITECTURE.md)**: Detailed master-worker sequence flow, RedisBloom deduplication engine details, local IP-isolated politeness rate-limiting queue, RabbitMQ consistent hashing topology, and the graceful stop protocol.
 *   👉 **[API Reference (API_REFERENCE.md)](file:///D:/distributed-crawler/distributed-web-crawler/API_REFERENCE.md)**: Endpoints specification for `/crawl`, `/stop`, `/ping`, and `/metrics` including request schemas, payload examples, and status codes.
 *   👉 **[Kubernetes Deployment Guide (k8s/README.md)](file:///D:/distributed-crawler/distributed-web-crawler/k8s/README.md)**: Operational guide to deploying the entire stateful stack onto Kubernetes using Helm charts.
+*   👉 **[Distributed Agents & Operations (AGENTS.md)](file:///D:/distributed-crawler/distributed-web-crawler/AGENTS.md)**: Overview of the scheduler and worker roles, package structure, and basic commands for the stack.
 
 ---
 
@@ -25,76 +26,6 @@ The crawler employs a master-worker (Scheduler-Worker) architecture to ensure ho
 
 ### Architectural Diagram
 <img width="4013" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/2aa8ea81-1739-47ea-8da0-8bf00e219c78" />
-
-### Crawl Lifecycle Sequence
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Client / User
-    participant Router as router.go (Gin)
-    participant HC as handlers/crawl.go
-    participant Redis as Redis Stack (Bloom Filter & Lock)
-    participant Broker as broker.go (Publisher)
-    participant RMQ as RabbitMQ Hashed Exchange
-    participant Worker as worker/cmd/main.go
-    participant Robots as robots/robots.go
-    participant Crawler as crawler/crawler.go
-    participant ResultQ as RabbitMQ Result Queue
-    participant Consumer as broker.go (Result Consumer)
-    participant Batcher as db/db.go (Batcher)
-    participant Mongo as MongoDB (Raw HTML)
-
-    User->>Router: POST /crawl {url, depth}
-    Router->>HC: Route handler
-    HC->>Redis: IsJobActive()
-    alt Job is Active
-        Redis-->>HC: True
-        HC-->>User: 429 Too Many Requests
-    else Job is Free
-        Redis-->>HC: False
-        HC->>Redis: StartJob() [Lock key & Max Depth]
-        HC->>Redis: AddToBloom(seedURL)
-        HC->>Broker: InsertMessage(seedURL, depth=0)
-        Broker->>RMQ: Publish message
-        HC-->>User: 200 Job Started
-    end
-
-    RMQ->>Worker: Consume message (via Consistent Hash Routing)
-    Worker->>Robots: IsAllowed(URL)
-    alt Cached or Allowed
-        Robots-->>Worker: Allowed (True)
-    else Fetch & Parse
-        Robots->>User: HTTP GET robots.txt
-        User-->>Robots: Parse robots.txt
-        Robots-->>Worker: Cache & return status
-    end
-
-    Worker->>Crawler: CrawlUrl(URL)
-    Crawler->>User: HTTP GET Target URL
-    User-->>Crawler: Return HTML Document
-    Crawler->>Crawler: goquery & purell normalization
-    Crawler-->>Worker: Return UrlData (HTML, Extracted URLs)
-    Worker->>ResultQ: Publish Result JSON
-    ResultQ->>Consumer: Consume result payload
-    Consumer->>Batcher: Buffer result (dbchan)
-    alt depth < maxDepth
-        loop Extracted URLs
-            Consumer->>Redis: CheckUrlDuplicate(nextURL)
-            alt Duplicate
-                Redis-->>Consumer: True (Skip)
-            else Unique
-                Consumer->>Redis: AddToBloom(nextURL)
-                Consumer->>Broker: InsertMessage(nextURL, depth+1)
-                Broker->>RMQ: Publish child message
-            end
-        end
-    end
-
-    loop Every 5s or 100 Docs
-        Batcher->>Mongo: InsertMany(Batch)
-    end
-```
 
 ### 🛡️ Local Politeness & Rotating IP Vision
 In production, each worker container can route its requests through rotating proxy networks or have its own public egress IP address. Therefore, instead of throttling hosts globally across all workers (which would limit performance), rate limits are enforced **locally per worker container**. 
