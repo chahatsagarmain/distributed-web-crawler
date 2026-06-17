@@ -55,8 +55,8 @@ For large crawl jobs targeting millions of pages, a single crawler constrained b
 #### Scaling to Millions of URLs: Thousands of Workers with Sidecar Egress
 To bypass the single-domain bottleneck and scale horizontally, we distribute the workload across different domains and isolate egress paths:
 
-1. **Host-Based Queue Routing via Consistent Hashing:**
-   Our RabbitMQ topology uses a Consistent Hashing Exchange. URLs are distributed across queues based on their hash. While different URLs on the same host may land in the same queue to maintain sequential politeness locally, different hosts are distributed across different workers.
+1. *Consistent Hashing:**
+   Our RabbitMQ topology uses a Consistent Hashing Exchange. URLs are distributed across queues based on their hash.This ensures that URLs are unifromly distributed and since we explore different hosts we are increasing throughput by reducing delay between crawls.
    
 2. **Local Politeness Isolation:**
    Rate limiting is enforced **locally** per worker container. Because each worker crawls multiple different domains, worker execution is not blocked by a single domain's delay. The worker only waits when hit with back-to-back requests for the *same* host.
