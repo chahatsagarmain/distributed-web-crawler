@@ -41,6 +41,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	Conn.StartConnectionMonitor(common.AppConfig.RabbitMQURI, broker.SetupBroker)
+
 	err = cache.SetupBloomFilter(Conn.RedisClient)
 	if err != nil {
 		slog.Error("Warning: In bloom filter failed to connect to database", "error", err)
@@ -57,7 +59,7 @@ func main() {
 
 	broker.StartWatchdog(Conn, 10*time.Second, 300) // check every 10s, timeout after 300s of inactivity
 
-	r := router.SetupRouter(Conn.RabbitMQ.Channel, Conn.RedisClient)
+	r := router.SetupRouter(Conn, Conn.RedisClient)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

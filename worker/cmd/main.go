@@ -35,6 +35,8 @@ func main() {
 	}
 	defer Conn.Close()
 
+	Conn.StartConnectionMonitor(common.AppConfig.RabbitMQURI, nil)
+
 	slog.Info("Worker: Connected successfully, starting consumers...")
 	err = broker.StartConsumers(Conn, common.AppConfig.QueueName)
 	if err != nil {

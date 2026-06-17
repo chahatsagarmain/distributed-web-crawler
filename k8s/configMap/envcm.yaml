@@ -13,6 +13,6 @@ data:
   REDIS_PASSWORD: ""
   REDIS_DB: "0"
   RABBITMQ_URI: "amqp://guest:guest@rabbitmq:5672/"
-  TIME_DELAY: "3000"
+  TIME_DELAY: "1500"
   TTL_JOB: "12"
 

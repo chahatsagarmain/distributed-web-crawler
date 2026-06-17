@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -149,38 +148,55 @@ func InsertMessage(ch *amqp.Channel, urlStr string, currentDepth, maxDepth int) 
 // StartResultConsumer starts consuming from ResultQueue in the background, updating last activity and processing results.
 // last ack time is required to detect inactivity and cleaning active job status
 func StartResultConsumer(conn *common.Connections, dbchan chan []byte) {
-	ch, err := conn.RabbitMQ.Conn.Channel()
-	if err != nil {
-		slog.Error("Scheduler: Failed to open RabbitMQ channel for result consumer", "error", err)
-		os.Exit(1)
-	}
-
-	msgs, err := ch.Consume(
-		ResultQueue,
-		"",    // consumer name
-		true,  // autoAck
-		false, // exclusive
-		false, // noLocal
-		false, // noWait
-		nil,   // args
-	)
-	if err != nil {
-		slog.Error("Scheduler: Failed to consume from result queue", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("Scheduler: Listening for results", "queue", ResultQueue)
+	slog.Info("Scheduler: Starting result consumers", "queue", ResultQueue)
 	go func() {
-		defer ch.Close()
 		var wg sync.WaitGroup
-		for i := 0 ; i < 5 ; i++{
+		for i := 0; i < 5; i++ {
 			wg.Add(1)
-			go func(){
+			go func(workerID int) {
 				defer wg.Done()
-				for msg := range msgs {
-					processResult(ch, conn.RedisClient, dbchan, msg.Body)
+
+				for {
+					rmq := conn.GetRabbitMQ()
+					if rmq == nil || rmq.Conn == nil || rmq.Conn.IsClosed() {
+						slog.Info("Scheduler Result Consumer: RabbitMQ connection not ready or closed, waiting...", "worker", workerID)
+						time.Sleep(2 * time.Second)
+						continue
+					}
+
+					ch, err := rmq.Conn.Channel()
+					if err != nil {
+						slog.Error("Scheduler Result Consumer ERROR: failed to open channel", "worker", workerID, "error", err)
+						time.Sleep(5 * time.Second)
+						continue
+					}
+
+					msgs, err := ch.Consume(
+						ResultQueue,
+						"",    // consumer name
+						true,  // autoAck
+						false, // exclusive
+						false, // noLocal
+						false, // noWait
+						nil,   // args
+					)
+					if err != nil {
+						slog.Error("Scheduler Result Consumer ERROR: failed to consume from result queue", "worker", workerID, "error", err)
+						ch.Close()
+						time.Sleep(5 * time.Second)
+						continue
+					}
+
+					slog.Info("Scheduler: Listening for results", "queue", ResultQueue, "worker", workerID)
+					for msg := range msgs {
+						processResult(ch, conn.RedisClient, dbchan, msg.Body)
+					}
+
+					slog.Info("Scheduler: Result consumer channel closed", "queue", ResultQueue, "worker", workerID)
+					ch.Close()
+					time.Sleep(2 * time.Second)
 				}
-			}()
+			}(i)
 		}
 		wg.Wait()
 	}()
@@ -260,7 +276,13 @@ func checkJobStatus(conn *common.Connections, idleTimeout int64) {
 		return
 	}
 
-	ch, err := conn.RabbitMQ.Conn.Channel()
+	rmq := conn.GetRabbitMQ()
+	if rmq == nil || rmq.Conn == nil || rmq.Conn.IsClosed() {
+		slog.Warn("Scheduler Watchdog: RabbitMQ connection not ready or closed")
+		return
+	}
+
+	ch, err := rmq.Conn.Channel()
 	if err != nil {
 		slog.Error("Scheduler Watchdog ERROR: failed to open channel", "error", err)
 		return

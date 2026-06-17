@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/worker/internal/crawler"
@@ -25,56 +26,80 @@ func StartConsumers(conn *common.Connections, queueName string) error {
 	c := crawler.NewCrawler()
 
 	var wg sync.WaitGroup
-	errChan := make(chan error, len(targetQueues))
+	errChan := make(chan error, len(targetQueues)*5)
 
 	for _, qName := range targetQueues {
 		wg.Add(1)
 		go func(q string) {
 			defer wg.Done()
 
-			// Open a dedicated channel for this queue consumer
-			ch, err := conn.RabbitMQ.Conn.Channel()
-			if err != nil {
-				slog.Error("Worker ERROR: failed to open channel", "queue", q, "error", err)
-				errChan <- err
-				return
-			}
-			defer ch.Close()
+			slog.Info("Worker: Consumer manager started for queue", "queue", q)
+			for {
+				rmq := conn.GetRabbitMQ()
+				if rmq == nil || rmq.Conn == nil || rmq.Conn.IsClosed() {
+					slog.Info("Worker: RabbitMQ connection not ready or closed, waiting to consume...", "queue", q)
+					time.Sleep(2 * time.Second)
+					continue
+				}
 
-			// set prefetch Qos to match concurrency limit 
-			err = ch.Qos(5, 0, false)
-			if err != nil {
-				slog.Warn("Worker WARNING: failed to set Qos", "queue", q, "error", err)
-			}
+				var wgWorkers sync.WaitGroup
 
-			msgs, err := ch.Consume(
-				q,     // queue
-				"",    // consumer name (empty for auto-generated)
-				false, // autoAck (false: manual ack to manage backpressure)
-				false, // exclusive
-				false, // noLocal
-				false, // noWait
-				nil,   // args
-			)
-			if err != nil {
-				slog.Error("Worker ERROR: failed to consume from queue", "queue", q, "error", err)
-				errChan <- err
-				return
-			}
+				for i := 0; i < 5; i++ {
+					wgWorkers.Add(1)
+					go func(workerID int) {
+						defer wgWorkers.Done()
 
-			slog.Info("Worker: Listening for messages", "queue", q)
-			var wgWorkers sync.WaitGroup
-			for i := 0 ; i < 5 ; i++{
-				wgWorkers.Add(1)
-				go func(){
-					defer wgWorkers.Done()
-					for msg := range msgs {
-						processMessage(ch , msg , c)
-					}
-				}()
+						currRmq := conn.GetRabbitMQ()
+						if currRmq == nil || currRmq.Conn == nil || currRmq.Conn.IsClosed() {
+							return
+						}
+
+						ch, err := currRmq.Conn.Channel()
+						if err != nil {
+							slog.Error("Worker ERROR: failed to open channel", "queue", q, "worker", workerID, "error", err)
+							select {
+							case errChan <- err:
+							default:
+							}
+							return
+						}
+						defer ch.Close()
+
+						err = ch.Qos(1, 0, false)
+						if err != nil {
+							slog.Warn("Worker WARNING: failed to set Qos", "queue", q, "worker", workerID, "error", err)
+						}
+
+						msgs, err := ch.Consume(
+							q,     // queue
+							"",    // consumer name (empty for auto-generated)
+							false, // autoAck (false: manual ack to manage backpressure)
+							false, // exclusive
+							false, // noLocal
+							false, // noWait
+							nil,   // args
+						)
+						if err != nil {
+							slog.Error("Worker ERROR: failed to consume from queue", "queue", q, "worker", workerID, "error", err)
+							select {
+							case errChan <- err:
+							default:
+							}
+							return
+						}
+
+						slog.Info("Worker: Listening for messages", "queue", q, "worker", workerID)
+						for msg := range msgs {
+							processMessage(ch, msg, c)
+						}
+						slog.Info("Worker: Consumer channel closed", "queue", q, "worker", workerID)
+					}(i)
+				}
+
+				wgWorkers.Wait()
+				slog.Info("Worker: Consumers stopped for queue, checking connection status...", "queue", q)
+				time.Sleep(2 * time.Second)
 			}
-			wgWorkers.Wait()
-			slog.Info("Worker: Consumer stopped", "queue", q)
 		}(qName)
 	}
 	wg.Wait()

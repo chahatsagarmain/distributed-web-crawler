@@ -10,7 +10,6 @@ import (
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/broker"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/db"
 	"github.com/gin-gonic/gin"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -35,8 +34,8 @@ func PingHandlerFunc() gin.HandlerFunc {
 	}
 }
 
-// MakeHandleCrawl returns a gin.HandlerFunc that has access to the RabbitMQ channel and Redis client.
-func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
+// MakeHandleCrawl returns a gin.HandlerFunc that has access to the database connections and Redis client.
+func MakeHandleCrawl(conn *common.Connections, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CrawlRequest
 		if err := c.ShouldBind(&req); err != nil {
@@ -76,24 +75,45 @@ func MakeHandleCrawl(ch *amqp.Channel, rdb *redis.Client) gin.HandlerFunc {
 			slog.Warn("Redis client is nil, running in bypass/test mode without locks")
 		}
 
-		if ch != nil {
-			if rdb != nil {
-				_, err := cache.AddToBloom(rdb, req.URL)
+		if conn != nil {
+			rmq := conn.GetRabbitMQ()
+			if rmq != nil && rmq.Conn != nil && !rmq.Conn.IsClosed() {
+				ch, err := rmq.Conn.Channel()
 				if err != nil {
-					slog.Warn("failed to add seed URL to bloom filter", "error", err)
+					slog.Error("failed to open channel for publishing crawl request", "error", err)
+					if rdb != nil {
+						db.ForceCleanupJob(rdb)
+					}
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process crawl request"})
+					return
 				}
-			}
-			err := broker.InsertMessage(ch, req.URL, 0, req.Depth)
-			if err != nil {
-				slog.Error("failed to insert message to broker", "error", err)
+				defer ch.Close()
+
+				if rdb != nil {
+					_, err := cache.AddToBloom(rdb, req.URL)
+					if err != nil {
+						slog.Warn("failed to add seed URL to bloom filter", "error", err)
+					}
+				}
+				err = broker.InsertMessage(ch, req.URL, 0, req.Depth)
+				if err != nil {
+					slog.Error("failed to insert message to broker", "error", err)
+					if rdb != nil {
+						db.ForceCleanupJob(rdb)
+					}
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue job"})
+					return
+				}
+			} else {
+				slog.Error("RabbitMQ connection not ready, failing crawl request")
 				if rdb != nil {
 					db.ForceCleanupJob(rdb)
 				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue job"})
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "message broker is currently offline"})
 				return
 			}
 		} else {
-			slog.Warn("RabbitMQ channel is nil, skipping publish", "url", req.URL)
+			slog.Warn("Connections object is nil, skipping publish", "url", req.URL)
 		}
 
 		c.String(http.StatusOK, "job started")

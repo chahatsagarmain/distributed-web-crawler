@@ -1,20 +1,20 @@
 package router
 
 import (
+	"github.com/chahatsagarmain/distributed-web-crawler/common"
 	"github.com/chahatsagarmain/distributed-web-crawler/scheduler/internal/handlers"
 	"github.com/gin-gonic/gin"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func SetupRouter(ch *amqp.Channel, rdb *redis.Client) *gin.Engine {
+func SetupRouter(conn *common.Connections, rdb *redis.Client) *gin.Engine {
 	r := gin.Default()
 
-	handleCrawl := handlers.MakeHandleCrawl(ch, rdb)
+	handleCrawl := handlers.MakeHandleCrawl(conn, rdb)
 	r.POST("/crawl", handleCrawl)
 
-	handleStop := handlers.MakeHandleStop(ch, rdb)
+	handleStop := handlers.MakeHandleStop(conn, rdb)
 	r.POST("/stop", handleStop)
 	
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
