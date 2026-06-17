@@ -27,10 +27,58 @@ The crawler employs a master-worker (Scheduler-Worker) architecture to ensure ho
 ### Architectural Diagram
 <img width="4013" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/2aa8ea81-1739-47ea-8da0-8bf00e219c78" />
 
-### 🛡️ Local Politeness & Rotating IP Vision
-In production, each worker container can route its requests through rotating proxy networks or have its own public egress IP address. Therefore, instead of throttling hosts globally across all workers (which would limit performance), rate limits are enforced **locally per worker container**. 
+### 🛡️ Local Politeness, Crawl Delays, and Scale Calculations
 
-This local enforcement uses a lock-free mutex reservation queue. Goroutines query `robots.txt` for `Crawl-delay` (defaulting to 3s), book a scheduled slot in an in-memory map, and sleep in a non-blocking way using Go channels. A background sweeper runs every 1 minute to delete host records that have been inactive for more than 5 minutes, preventing memory growth.
+#### How Crawl Delay Slows Down Bots
+Ethical web crawlers must respect the target site's bandwidth and server constraints. This is defined via the `Crawl-delay` directive in a site's `robots.txt` file (or falls back to a default value, e.g., 3 seconds in our system). 
+
+A crawl delay of **3 seconds** means that a crawler must wait at least 3 seconds between successive requests to the same host domain. 
+* This prevents the crawler from overwhelming the target server's resources (CPU, network bandwidth), which would otherwise look like a Distributed Denial of Service (DDoS) attack.
+* Ignoring this delay usually triggers web application firewalls (WAFs) or intrusion detection systems to temporarily or permanently block the crawler's IP address.
+
+---
+
+#### Crawling Rate Limitations of a Single Crawler (Single IP / Single Domain)
+When hitting a single host domain, a single-threaded crawler must sequentially enforce the crawl delay:
+
+$$\text{Max Throughput per Host} = \frac{1 \text{ request}}{\text{Crawl Delay}} = \frac{1}{3\text{s}} \approx 0.33 \text{ requests/sec}$$
+
+Under these constraints, the maximum crawl rates for a sequential crawler hitting a single host are:
+* **Per Minute:** $60\text{s} \times 0.33 \approx 20\text{ URLs}$
+* **Per Hour:** $3600\text{s} \times 0.33 \approx 1,200\text{ URLs}$
+* **Per Day:** $86,400\text{s} \times 0.33 \approx 28,800\text{ URLs}$
+
+For large crawl jobs targeting millions of pages, a single crawler constrained by politeness would take years to finish.
+
+---
+
+#### Scaling to Millions of URLs: Thousands of Workers with Sidecar Egress
+To bypass the single-domain bottleneck and scale horizontally, we distribute the workload across different domains and isolate egress paths:
+
+1. **Host-Based Queue Routing via Consistent Hashing:**
+   Our RabbitMQ topology uses a Consistent Hashing Exchange. URLs are distributed across queues based on their hash. While different URLs on the same host may land in the same queue to maintain sequential politeness locally, different hosts are distributed across different workers.
+   
+2. **Local Politeness Isolation:**
+   Rate limiting is enforced **locally** per worker container. Because each worker crawls multiple different domains, worker execution is not blocked by a single domain's delay. The worker only waits when hit with back-to-back requests for the *same* host.
+
+3. **IP-Rotation & Sidecar Egress:**
+   When running thousands of workers on Kubernetes, each worker pod can run with a sidecar proxy (e.g., Squid, Tor, or dedicated egress proxy sidecars) or be assigned distinct Node IPs. This rotates the egress IPs across the cluster. Target web servers see the requests as coming from different clients, preventing IP-wide rate-limiting or blocking.
+
+#### Distributed Scaling Calculations
+By distributing the targets across $N$ different host domains and scaling to $W$ workers, the politeness bottleneck is parallelized:
+
+$$\text{Overall Crawling Rate} = N_{\text{domains}} \times \left(\frac{1}{\text{Crawl Delay}}\right)$$
+
+Let's compute the throughput scaling for $N$ distinct domains:
+
+| Number of Concurrent Domains ($N$) | Crawl Delay | Combined Throughput | URLs Crawled per Hour | URLs Crawled per Day |
+| :--- | :--- | :--- | :--- | :--- |
+| **1 Domain** | 3 seconds | 0.33 req/sec | 1,200 | 28,800 |
+| **100 Domains** | 3 seconds | 33.3 req/sec | 120,000 | 2.88 Million |
+| **1,000 Domains** | 3 seconds | 333.3 req/sec | 1.2 Million | 28.8 Million |
+| **10,000 Domains** | 3 seconds | 3,333.3 req/sec | 12.0 Million | 288.0 Million |
+
+By horizontally scaling workers (up to thousands of replicas) and scattering crawl requests across a large pool of domains, the overall crawl rate increases linearly with the number of target domains, making it easy to ingest **hundreds of millions of pages per day** without violating the politeness guidelines of any individual site.
 
 For technical details, see the [Architecture Guide (ARCHITECTURE.md)](file:///D:/distributed-crawler/distributed-web-crawler/ARCHITECTURE.md).
 

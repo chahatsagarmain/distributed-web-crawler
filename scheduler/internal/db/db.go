@@ -58,7 +58,7 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 
 			if size > 0 {
 				slog.Info("BATCH INSERT started", "size", size)
-				go b.Insert(conn, documents)
+				b.Insert(conn, documents)
 			}
 		case val := <-dbchan:
 			slog.Info("INSERT DOCUMENT", "doc", string(val))
@@ -81,7 +81,7 @@ func (b *Batcher) BatchInsert(conn *mongo.Client, dbchan chan []byte) {
 
 			if len(documents) > 0 {
 				slog.Info("BATCH INSERT started", "size", len(documents))
-				go b.Insert(conn, documents)
+				b.Insert(conn, documents)
 			}
 		}
 	}
