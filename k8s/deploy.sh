@@ -78,9 +78,10 @@ kubectl apply -f k8s/services/scheduler-svc.yaml
 kubectl apply -f k8s/services/worker-svc.yaml
 echo -e "${GREEN}[OK] Application layer deployed.${NC}"
 
-# 5. Step 4: Observability (Prometheus)
-echo -e "\n${YELLOW}[Step 4] Setting up Observability Stack (Prometheus & ServiceMonitor)...${NC}"
+# 5. Step 4: Observability (Prometheus, Loki, Promtail)
+echo -e "\n${YELLOW}[Step 4] Setting up Observability Stack (Prometheus, Loki, Promtail & ServiceMonitor)...${NC}"
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 echo -e "${BLUE}[*] Pre-installing Prometheus Operator CRDs...${NC}"
@@ -102,6 +103,19 @@ echo -e "${BLUE}[*] Deploying Prometheus (kube-prometheus-stack) in monitoring n
 helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   -f k8s/values/prometheus-values.yaml \
   -n monitoring --create-namespace
+
+echo -e "${BLUE}[*] Deploying Loki in monitoring namespace...${NC}"
+helm upgrade --install loki grafana/loki \
+  -f k8s/values/loki-values.yaml \
+  -n monitoring
+
+echo -e "${BLUE}[*] Deploying Promtail in monitoring namespace...${NC}"
+helm upgrade --install promtail grafana/promtail \
+  --set config.clients[0].url=http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push \
+  -n monitoring
+
+echo -e "${BLUE}[*] Provisioning Loki datasource in Grafana...${NC}"
+kubectl apply -f k8s/services/loki-datasource.yaml
 
 echo -e "${BLUE}[*] Applying ServiceMonitor...${NC}"
 kubectl apply -f k8s/service-monitor/service-monitor.yaml

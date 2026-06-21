@@ -134,9 +134,34 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    user: root
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/tmp/loki
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+    command: -config.file=/etc/loki/loki.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
 
 volumes:
   mongo-data:
   rabbitmq-data:
   prometheus-data:
   grafana-data:
+  loki-data:

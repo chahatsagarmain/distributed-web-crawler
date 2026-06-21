@@ -82,10 +82,11 @@ kubectl apply -f k8s/services/scheduler-svc.yaml
 kubectl apply -f k8s/services/worker-svc.yaml
 ```
 
-### Step 4: Observability (Prometheus)
-Deploy Prometheus to monitor the queue depths, scraping speeds, and pod health.
+### Step 4: Observability (Prometheus, Loki, Promtail)
+Deploy Prometheus, Loki, and Promtail to monitor metrics, log streams, queue depths, and pod health.
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 # Pre-install Prometheus Operator CRDs (required to avoid schema errors)
@@ -100,8 +101,24 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-oper
 # Install Prometheus
 helm install prometheus prometheus-community/kube-prometheus-stack -f k8s/values/prometheus-values.yaml -n monitoring --create-namespace
 
+# Install Loki
+helm install loki grafana/loki -f k8s/values/loki-values.yaml -n monitoring
+
+# Install Promtail as a DaemonSet pointing to Loki
+helm install promtail grafana/promtail --set config.clients[0].url=http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push -n monitoring
+
+# Provision Loki datasource in Grafana
+kubectl apply -f k8s/services/loki-datasource.yaml
+
 # Apply the dynamic ServiceMonitor
 kubectl apply -f k8s/service-monitor/service-monitor.yaml
+```
+
+### Step 5: Tearing Down & Cleaning Up
+To completely uninstall all Helm releases, delete deployments, CRDs, service monitors, and destroy both the `crawler` and `monitoring` namespaces, run the provided teardown script:
+```bash
+chmod +x ./k8s/undo.sh
+./k8s/undo.sh
 ```
 
 ---

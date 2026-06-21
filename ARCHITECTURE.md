@@ -202,3 +202,53 @@ The `PolitenessManager` starts a background sweeper:
 - **Interval**: Runs every **1 minute**.
 - **Eviction Threshold**: Removes any hostname record that has been inactive (not crawled) for more than **5 minutes**.
 This guarantees the memory footprint of the worker remains small, constant, and clean.
+
+---
+
+## 📊 Observability (Metrics & Log Aggregation)
+
+The system features a native observability stack designed to monitor crawl performance, stateful queues, and system health in real-time. It integrates metrics collection with **Prometheus**, log aggregation with **Grafana Loki/Promtail**, and visualization with **Grafana**.
+
+```mermaid
+graph LR
+    subgraph Instrumentation
+        Scheduler[Scheduler App] -->|Exposes :8080/metrics| Prom[Prometheus Server]
+        Workers[Worker Pods] -->|Exposes :8081/metrics| Prom
+        Scheduler -->|JSON logs to stdout| Promtail[Promtail Agent]
+        Workers -->|JSON logs to stdout| Promtail
+    end
+
+    subgraph Aggregation
+        Promtail -->|Pushes logs| Loki[Grafana Loki]
+    end
+
+    subgraph Visualization
+        Prom -->|Metrics Source| Grafana[Grafana Dashboard]
+        Loki -->|Log Source| Grafana
+    end
+
+    style Scheduler fill:#003554,stroke:#00a8cc,stroke-width:2px,color:#fff
+    style Workers fill:#003554,stroke:#00a8cc,stroke-width:2px,color:#fff
+    style Prom fill:#e26d5c,stroke:#c94c3a,stroke-width:2px,color:#fff
+    style Promtail fill:#2b2d42,stroke:#ef233c,stroke-width:2px,color:#fff
+    style Loki fill:#1b4965,stroke:#62b6cb,stroke-width:2px,color:#fff
+    style Grafana fill:#03071e,stroke:#f72585,stroke-width:2px,color:#fff
+```
+
+### 1. Real-Time Metrics (Prometheus)
+*   **Metrics Instrumentation**: Go application services use the `prometheus/client_golang` library to track runtime performance.
+    *   **Scheduler**: Exposes internal HTTP routes (e.g. `/metrics` on port `:8080`).
+    *   **Worker**: Runs a lightweight, non-blocking HTTP server in a separate background goroutine on port `:8081` solely for exposing metrics endpoints.
+*   **Kubernetes Service Discovery**: In K8s deployments, we register a custom Prometheus Operator `ServiceMonitor` (configured in [service-monitor.yaml](file:///D:/distributed-crawler/distributed-web-crawler/k8s/service-monitor/service-monitor.yaml)). Any Kubernetes Service labeled with `monitor: enabled` is automatically detected and scraped.
+
+### 2. Centralized Logging (Grafana Loki & Promtail)
+*   **Structured Application Logs**: Both Scheduler and Worker utilize Go's structured `log/slog` library to output logs in JSON format to standard output. 
+*   **Log Ship & Enrichment (Promtail)**: 
+    *   **Docker Compose**: Promtail mounts the local Docker daemon socket (`/var/run/docker.sock`) to discover containers. It adds compose metadata labels (such as `service` and `container`).
+    *   **Kubernetes**: Promtail runs as a `DaemonSet`, mounting the host node directory `/var/log/pods` to read all container logs, enriching them with Kubernetes API labels (such as `namespace`, `pod`, and `container`).
+*   **Loki Ingestion Engine**: Loki acts as a highly optimized, metadata-indexed log database. It is configured to run in `Monolithic` mode with persistent volume storage for local deployments, accepting pushed logs from Promtail on port `3100`.
+*   **Dynamic Log Parsing (LogQL)**: Because application logs are natively structured as JSON, queries in Grafana can dynamically extract properties at query time. For example:
+    ```logql
+    {service="scheduler"} | json | level="ERROR"
+    ```
+    This extracts the JSON fields (`time`, `level`, `msg`, `url`, etc.) as filterable labels on-the-fly.
