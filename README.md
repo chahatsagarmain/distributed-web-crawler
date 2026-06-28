@@ -25,7 +25,7 @@ To make this repository clean and maintainable, detailed topics have been moved 
 The crawler employs a master-worker (Scheduler-Worker) architecture to ensure horizontal scalability, fault tolerance, and data ingestion reliability.
 
 ### Architectural Diagram
-<img width="4013" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/2aa8ea81-1739-47ea-8da0-8bf00e219c78" />
+<img width="5185" height="2742" alt="crawler" src="https://github.com/user-attachments/assets/b942f357-cfee-4694-bd36-374f12d17bc7" />
 
 ### 🛡️ Local Politeness, Crawl Delays, and Scale Calculations
 
